@@ -1,4 +1,6 @@
 import { Type } from "typebox";
+import { chessAnalyzeTool, chessboardTool, chessReferenceTool } from "./tools/chess.ts";
+import { chessQuestionSchema } from "../core/chess.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { invalidInputResult, questionResult, serverExecute } from "./tool-execute.ts";
 import {
@@ -75,6 +77,11 @@ function prepareQuestionArguments<T extends object>(args: unknown): T {
 		return o as T;
 	}
 	return args as T;
+}
+
+/** An explicit request from the chess workspace opts into all three answer modalities. */
+function chessLessonRequested(messages: readonly { role?: string; content?: unknown }[]) {
+	return messages.some(m => m.role === "user" && typeof m.content === "string" && m.content.startsWith("[LearnHarness Chess lesson]"));
 }
 
 export const askUserQuestionTool: AgentTool<typeof askInputSchema> = {
@@ -311,7 +318,9 @@ export function createProberTools(
 	// differently-typed literals makes the whole object's type a union —
 	// unusable as Record<string, AgentTool<any>> downstream).
 	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { recall: probeExplainTool } : { probe: probeQuizTool };
+		chessLessonRequested(ctx.chatStore?.getChat?.(ctx.chatId)?.messages ?? [])
+			? { probe: probeQuizTool, recall: probeExplainTool }
+			: mechanics === "free" ? { recall: probeExplainTool } : { probe: probeQuizTool };
 	// healToolRecord (owner, 2026-10-09 — the whitehead generalization):
 	// the standard argument heal over the WHOLE registry — every tool,
 	// not just the one the latest wobble incident landed on.
@@ -319,6 +328,9 @@ export function createProberTools(
 		...filterEnabledTools(
 			{
 				...quizzing,
+				chessboard: chessboardTool,
+				chess_reference: chessReferenceTool,
+				chess_analyze: chessAnalyzeTool,
 				ask_user_question: askUserQuestionTool,
 				// The learner-filesystem set is always-on (user-decided 2026-09,
 				// sources v1): the prober inspects and LOCATES learner-referenced
@@ -436,6 +448,11 @@ export function createTeacherTools(
 	ctx: TeacherToolContext,
 	enabled?: EnabledTools,
 ): Record<string, AgentTool<any>> {
+	const chessboard: AgentTool<typeof chessQuestionSchema> = { ...chessboardTool, execute: async (id, input) => {
+		const problem = nodeIdProblem(ctx, input.nodeId ?? "");
+		if (problem) return invalidInputResult("chessboard", [problem]);
+		return chessboardTool.execute(id, input);
+	} };
 	// Quizzing mechanics (owner 2026-09-27): free-recall swaps the teach
 	// quiz for the teach explain — one quizzing tool at a time, whichever
 	// the settings arm. ask stays always-on.
@@ -443,12 +460,17 @@ export function createTeacherTools(
 	// Same widening as the prober's (see above) — the conditional spread of
 	// two differently-typed literals collapses into an unusable union type.
 	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
+		chessLessonRequested(ctx.chatStore?.getChat?.(ctx.chatId)?.messages ?? [])
+			? { quiz: teachQuizToolFor(ctx), explain: teachExplainToolFor(ctx) }
+			: mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
 	// healToolRecord — same standard as the prober's registry (above).
 	return healToolRecord(
 		filterEnabledTools(
 			{
 			...quizzing,
+			chessboard,
+			chess_reference: chessReferenceTool,
+			chess_analyze: chessAnalyzeTool,
 			ask_user_question: askUserQuestionTool,
 			// The learner-filesystem set is always-on (user-decided 2026-09,
 			// sources v1): the teacher locates and reads learner-referenced

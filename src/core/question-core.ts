@@ -359,7 +359,7 @@ export function explainInputProblems(input: { correctAnswer: string }): string[]
 /** The tool names that carry the quizzing mechanic — the teach seam
  *  (phases), the plan-position fold, and the pending gate all recognize
  *  whichever is armed. */
-export const QUIZ_TOOL_NAMES = ["quiz", "explain"] as const;
+export const QUIZ_TOOL_NAMES = ["quiz", "explain", "chessboard"] as const;
 
 /** The TEACHER's quiz declaration (base + the position field). */
 export const quizInputSchema = quizInputObject;
@@ -404,7 +404,7 @@ export interface OptionAnswer {
 	index: number; // 1-based display index
 }
 
-export type QuestionKind = "quiz" | "ask" | "explain";
+export type QuestionKind = "quiz" | "ask" | "explain" | "chessboard";
 export type SelectMode = "single-select" | "multi-select";
 export type QuestionMode = SelectMode | "text";
 
@@ -435,6 +435,8 @@ export interface QuestionData {
  *  toolCallId restated — the toolResult message already carries it. */
 export interface QuestionAnswerData {
 	kind: QuestionKind;
+	chess?: import("./chess.ts").ChessAnswer;
+	chessGrade?: ReturnType<typeof import("./chess.ts").gradeChessAnswer>;
 	/** The persisted call's tool NAME (owner, 2026-10-09): probe-phase
 	 *  calls are `probe`/`recall`, teach calls `quiz`/`explain` — the
 	 *  cards label by it ("Probe"/"Recall"), so the phase boundary is
@@ -779,6 +781,7 @@ export function dismissedAnswer(kind: QuestionKind, questionText: string): Quest
 export function compactAnswerForModel(ad: QuestionAnswerData): Record<string, unknown> {
 	if (ad.dismissed) return { kind: ad.kind, dismissed: true };
 	const out: Record<string, unknown> = { kind: ad.kind };
+	if (ad.kind === "chessboard") { out.chess = ad.chess; out.chessGrade = ad.chessGrade; }
 	if (ad.dontKnow) out.dontKnow = true;
 	// Array.isArray: the seam is called with `unknown` answers (test
 	// fixtures, foreign records) — degrade to omission, never crash.

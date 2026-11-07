@@ -1,0 +1,41 @@
+[Event "Synthetic rapid training game"]
+[Site "Local fixture"]
+[Date "2026.10.01"]
+[UTCTime "12:00:00"]
+[White "Learner"]
+[Black "FixtureOne"]
+[WhiteElo "1000"]
+[BlackElo "1050"]
+[TimeControl "600+5"]
+[Result "0-1"]
+[Termination "Learner resigned"]
+
+1. e4 {[%clk 0:10:00]} e5 2. Qh5 Nc6 3. a3 Nf6 4. a4 Nxh5 5. h3 0-1
+
+[Event "Synthetic rapid training game"]
+[Site "Local fixture"]
+[Date "2026.10.02"]
+[UTCTime "12:00:00"]
+[White "Learner"]
+[Black "FixtureTwo"]
+[WhiteElo "990"]
+[BlackElo "1030"]
+[TimeControl "600+5"]
+[Result "0-1"]
+[Termination "Learner lost on time"]
+
+1. e4 e5 2. Qh5 Nc6 3. a3 Nf6 4. b3 Nxh5 5. h3 0-1
+
+[Event "Synthetic rapid training game"]
+[Site "Local fixture"]
+[Date "2026.10.03"]
+[UTCTime "12:00:00"]
+[White "Learner"]
+[Black "FixtureThree"]
+[WhiteElo "980"]
+[BlackElo "1000"]
+[TimeControl "600+5"]
+[Result "0-1"]
+[Termination "Learner abandoned the game"]
+
+1. e4 e5 2. Qh5 Nc6 3. a3 Nf6 4. h3 Nxh5 5. a4 0-1

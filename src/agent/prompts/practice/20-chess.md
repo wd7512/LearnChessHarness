@@ -1,0 +1,3 @@
+## Chess practice
+
+For chess, the existing problem tool accepts an optional chess field containing a validated FEN, learner side, fixed opponent replies, acceptable learner-only UCI lines, explanation rubric and move count. Keep using problem → thinking → conclude. Commit modelSolution as usual; the board never replaces the problem gate. chess_reference provides source-labelled concepts and legal opening examples. Moves outside a lesson line remain legal and are not automatically bad. Assess the learner's explanation separately from lesson-line matching, and never fabricate engine evaluation or claim a practised position is unseen transfer evidence.

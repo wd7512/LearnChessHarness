@@ -1,5 +1,7 @@
 "use client";
 
+import { ChessQuestionDock } from "@/components/chess-board";
+
 import { createContext, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useChatSession } from "@/components/session";
 import { visibleQueuedSteers } from "@/components/session-core";
@@ -411,7 +413,7 @@ export function Chat({
 			// route parks the dismissal (202) and the settle applies it.
 			const p = pendingRef.current;
 			if (p) {
-				const question = (p.input as { question?: string } | null)?.question ?? "";
+				const question = (p.input as { question?: string; objective?: string } | null)?.question ?? (p.input as { objective?: string } | null)?.objective ?? "";
 				const reading = readingThinkingRef.current.trim() || undefined;
 				clearReadingThinking();
 				const answer = dismissedAnswer(toolQuestionKind(p.tool), question);
@@ -1588,7 +1590,8 @@ export function Chat({
 													case "tool-probe":
 													case "tool-ask_user_question":
 													case "tool-explain":
-													case "tool-recall": {
+													case "tool-recall":
+													case "tool-chessboard": {
 														const malformed = !busy && malformedQuestions.find(call => call.messageId === part.sourceMessageId && call.contentIndex === part.sourceContentIndex && call.toolCallId === part.toolCallId);
 														if (malformed) return <MalformedQuestion key={pi} disabled={!!pending || compacting}
 															reason={pending ? "Answer or discard the remaining question first." : undefined}
@@ -2392,7 +2395,9 @@ function DockOverlay({
 							key={mode}
 							className={mode === initialModeRef.current ? "flow-root" : "flow-root dock-variant"}
 						>
-							{pending ? (
+								{pending?.tool === "chessboard" ? (
+									<ChessQuestionDock input={pending.input} toolCallId={pending.toolCallId} draftKey={`${chatId}:${pending.toolCallId}`} expanded={expanded} onExpand={expandAndReveal} onSubmit={onSubmitAnswer} disabled={compactionRunning} />
+								) : pending ? (
 								<QuestionDock
 									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall"}
 									toolCallId={pending.toolCallId}
