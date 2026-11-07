@@ -5,7 +5,8 @@ import { CHESS_CONCEPTS, CHESS_OPENINGS } from "../../core/chess-curriculum.ts";
 import { invalidInputResult, questionResult } from "../tool-execute.ts";
 import { Chess } from "chess.js";
 import { playUci } from "../../core/chess.ts";
-import { StockfishEngine } from "../chess-engine.ts";
+import { StockfishEngine, type ChessEngine } from "../chess-engine.ts";
+import type { ChessHistoryReader } from "../../core/chess-workflows.ts";
 
 export const chessboardTool: AgentTool<typeof chessQuestionSchema> = {
 	name: "chessboard",
@@ -58,7 +59,10 @@ const analyzeSchema = Type.Object({
 		description: "Optional full alternating UCI continuation to verify, not learner-only moves.",
 	}),
 });
-export const chessAnalyzeTool: AgentTool<typeof analyzeSchema> = {
+export function createChessAnalyzeTool(
+	openEngine?: () => Promise<ChessEngine>,
+): AgentTool<typeof analyzeSchema> {
+	return {
 	name: "chess_analyze",
 	label: "chess_analyze",
 	parameters: analyzeSchema,
@@ -73,10 +77,15 @@ export const chessAnalyzeTool: AgentTool<typeof analyzeSchema> = {
 		} catch (e) {
 			return invalidInputResult("chess_analyze", [e instanceof Error ? e.message : "Invalid continuation"]);
 		}
-		const engine = new StockfishEngine();
-		try {
-			await engine.ready();
-			board = new Chess(input.fen);
+			let engine: ChessEngine | undefined;
+			try {
+				if (openEngine) engine = await openEngine();
+				else {
+					const stockfish = new StockfishEngine();
+					engine = stockfish;
+					await stockfish.ready();
+				}
+				board = new Chess(input.fen);
 			const evaluations = [await engine.evaluate(board.fen())];
 			for (const move of input.moves) {
 				playUci(board, move);
@@ -113,7 +122,54 @@ export const chessAnalyzeTool: AgentTool<typeof analyzeSchema> = {
 				details: null,
 			};
 		} finally {
-			engine.close();
+			engine?.close();
 		}
 	},
 };
+}
+export const chessAnalyzeTool = createChessAnalyzeTool();
+
+const historySchema = Type.Object({
+	view: Type.Union([
+		Type.Literal("summary"),
+		Type.Literal("game"),
+		Type.Literal("position"),
+		Type.Literal("practice"),
+	]),
+	gameId: Type.Optional(Type.String()),
+	ply: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+export function createChessHistoryTool(read?: ChessHistoryReader): AgentTool<typeof historySchema> {
+	return {
+		name: "chess_history",
+		label: "chess_history",
+		parameters: historySchema,
+		description:
+			"Read the learner's connected public chess accounts, imported games, actual completed Stockfish analyses, evidence-backed recurring patterns and prior chess practice. Call summary FIRST, then game/position/practice only as needed using returned game IDs. This chess history is separate from the general learning graph. An empty graph does not imply no chess games. Retrieval failures are unavailable data access, never evidence of an empty history. Do not ask for PGNs that are already imported.",
+		execute: async (_id, input) => {
+			try {
+				if (!read) throw new Error("Chess history access was not connected for this agent.");
+				const data = await read(input);
+				return {
+					content: [{ type: "text", text: JSON.stringify(data) }],
+					details: null,
+				};
+			} catch {
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								status: "unavailable",
+								message:
+									"Chess history could not be retrieved. This is a data-access failure, not an empty history. Open the Chess workspace to retry; do not request a duplicate upload.",
+							}),
+						},
+					],
+					details: null,
+					isError: true,
+				};
+			}
+		},
+	};
+}

@@ -1,5 +1,10 @@
 import { Type } from "typebox";
-import { chessAnalyzeTool, chessboardTool, chessReferenceTool } from "./tools/chess.ts";
+import { chessDiagramProblems } from "../core/chess-diagram.ts";
+import {
+	createChessAnalyzeTool,
+	createChessHistoryTool, chessboardTool, chessReferenceTool } from "./tools/chess.ts";
+import type { ChessEngine } from "./chess-engine.ts";
+import type { ChessHistoryReader } from "../core/chess-workflows.ts";
 import { chessQuestionSchema } from "../core/chess.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { invalidInputResult, questionResult, serverExecute } from "./tool-execute.ts";
@@ -81,7 +86,8 @@ function prepareQuestionArguments<T extends object>(args: unknown): T {
 
 /** An explicit request from the chess workspace opts into all three answer modalities. */
 function chessLessonRequested(messages: readonly { role?: string; content?: unknown }[]) {
-	return messages.some(m => m.role === "user" && typeof m.content === "string" && m.content.startsWith("[LearnHarness Chess lesson]"));
+	return messages.some(
+		(m) => m.role === "user" && typeof m.content === "string" && m.content.startsWith("[LearnHarness Chess lesson]"));
 }
 
 export const askUserQuestionTool: AgentTool<typeof askInputSchema> = {
@@ -96,7 +102,7 @@ export const askUserQuestionTool: AgentTool<typeof askInputSchema> = {
 	prepareArguments: prepareQuestionArguments,
 	executionMode: "sequential",
 	execute: async (_toolCallId, input) => {
-		const problems = askOptionProblems(input.options ?? []);
+		const problems = [...askOptionProblems(input.options ?? []), ...chessDiagramProblems(input)];
 		if (problems.length > 0) return invalidInputResult("ask_user_question", problems);
 		return questionResult();
 	},
@@ -148,7 +154,8 @@ export const quizExampleBody = {
  *  own fields (its NAME among them — the probe-phase tools self-reference
  *  as probe/recall, owner 2026-10-09). All mechanics, zero doctrine — plus
  *  the one sanctioned example (above). */
-function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types: boolean }): string {
+function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types: boolean;
+}): string {
 	const base =
 		"Ask the learner a GRADED question with a known correct answer, then instantly grade and give feedback. " +
 		"Unlike ask_user_question (which collects preferences/decisions with no right answer), " +
@@ -272,6 +279,8 @@ export const probeExplainTool: AgentTool<typeof explainInputBase> = {
  *  ProbeDoneContext) PLUS the job-dispatch wiring, since the owner ruling
  *  (2026-09-20) puts research + pdf in the probe phase's registry too. */
 export interface ProberToolContext extends ProbeDoneContext {
+	chessEngine?: () => Promise<ChessEngine>;
+	chessHistory?: ChessHistoryReader;
 	/** Creates the job record (deduped by toolCallId). */
 	jobStore: JobStore;
 	/** Fire the background runner for a freshly created job. */
@@ -330,7 +339,8 @@ export function createProberTools(
 				...quizzing,
 				chessboard: chessboardTool,
 				chess_reference: chessReferenceTool,
-				chess_analyze: chessAnalyzeTool,
+				chess_analyze: createChessAnalyzeTool(ctx.chessEngine),
+				chess_history: createChessHistoryTool(ctx.chessHistory),
 				ask_user_question: askUserQuestionTool,
 				// The learner-filesystem set is always-on (user-decided 2026-09,
 				// sources v1): the prober inspects and LOCATES learner-referenced
@@ -404,6 +414,8 @@ export function teachQuizToolFor(ctx: Pick<PlanToolContext, "chatId" | "chatStor
 }
 
 export interface TeacherToolContext extends PlanToolContext {
+	chessEngine?: () => Promise<ChessEngine>;
+	chessHistory?: ChessHistoryReader;
 	/** Job-tool wiring (sub-agent dispatch): the job store + the runner's
 	 *  spawn seam. The composition root injects both. */
 	jobStore: JobStore;
@@ -470,7 +482,8 @@ export function createTeacherTools(
 			...quizzing,
 			chessboard,
 			chess_reference: chessReferenceTool,
-			chess_analyze: chessAnalyzeTool,
+			chess_analyze: createChessAnalyzeTool(ctx.chessEngine),
+				chess_history: createChessHistoryTool(ctx.chessHistory),
 			ask_user_question: askUserQuestionTool,
 			// The learner-filesystem set is always-on (user-decided 2026-09,
 			// sources v1): the teacher locates and reads learner-referenced

@@ -1,6 +1,8 @@
 "use client";
 
 import { ToolContentResponse } from "@/components/ai-elements/message";
+import { ChessDiagram } from "@/components/chess-diagram";
+import { questionDiagram } from "@/src/core";
 import { cn } from "@/lib/utils";
 import type { ArtifactPartProps } from "@/src/core";
 
@@ -68,6 +70,7 @@ export function ProblemCard({ part }: ArtifactPartProps) {
 			<div className="lh-prose text-[15px]">
 				<ToolContentResponse>{statement}</ToolContentResponse>
 			</div>
+			{questionDiagram(input) && <ChessDiagram position={questionDiagram(input)!} />}
 		</div>
 	);
 }
@@ -100,7 +103,8 @@ export function ConcludeCard({ part }: ArtifactPartProps) {
 	// below in the quiz-explanation register (small, muted, low-key).
 	// Nothing collapsible. Legacy inputs (pre-slim records) that carry
 	// their own solutionReveal fall back to it.
-	const input = (part.input ?? {}) as { outcome?: string; verdict?: string; solutionReveal?: string };
+	const input = (part.input ?? {}) as { outcome?: string; verdict?: string; solutionReveal?: string;
+	};
 	const outcome = typeof input.outcome === "string" ? input.outcome : "";
 	const verdict = typeof input.verdict === "string" ? input.verdict : "";
 	const reveal =
@@ -174,7 +178,8 @@ function MetadataPopover({
 	concludeInput,
 	problemInput,
 }: {
-	concludeInput: { outcome?: string; rung?: unknown; missClass?: unknown; retest?: unknown };
+	concludeInput: { outcome?: string; rung?: unknown; missClass?: unknown; retest?: unknown;
+	};
 	problemInput: { mode?: unknown; target?: unknown };
 }) {
 	const [open, setOpen] = useState(false);
@@ -294,5 +299,7 @@ export function ThinkingCard({ data }: { data: PracticeThinkingData }) {
 	// 50%-italic quote block on expand. Legacy records' commit flag is
 	// deliberately unread (one lane now). A TRANSCRIPT row (owner round,
 	// 2026-10-07): full-width band + rail, arriving expanded.
-	return <ThinkingBlock testId="thinking-card" label="YOUR THINKING" text={data.text} defaultOpen />;
+	return (
+		<ThinkingBlock testId="thinking-card" label="YOUR THINKING" text={data.text} defaultOpen />
+	);
 }

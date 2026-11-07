@@ -18,6 +18,7 @@
  */
 
 import { Type, type Static } from "typebox";
+import { chessDiagramProblems, chessDiagramSchema } from "./chess-diagram.ts";
 import { stripModelValueDebris } from "./value-debris.ts";
 
 // ─── shared types ───────────────────────────────────────────────────────────
@@ -113,8 +114,11 @@ export function quizInputProblems(input: {
 	options: Array<{ label: string; value?: string }>;
 	correctAnswer: string | string[];
 	multiSelect?: boolean;
+	question?: string;
+	position?: unknown;
 }): string[] {
 	const { problems, keys } = optionProblems(input.options);
+	problems.push(...chessDiagramProblems(input));
 
 	// Preserve exact option keys before trying copy-syntax cleanup — the
 	// same option-aware coercion runs at the display and grading seams.
@@ -156,6 +160,7 @@ export function quizInputProblems(input: {
 // args in schema order, so explanation sits immediately BEFORE correctAnswer.
 // (All consumers read by key; the order is authoring guidance, nothing else.)
 export const quizInputBase = Type.Object({
+	position: Type.Optional(chessDiagramSchema),
 	question: Type.String({
 		description:
 			"The single quiz question to ask. ONE question per turn: ask, then end your turn — the answer determines the next question.",
@@ -301,6 +306,7 @@ export const quizDisplayInputSchema = Type.Object({
 // not in the system prompt.
 
 export const explainInputBase = Type.Object({
+	position: Type.Optional(chessDiagramSchema),
 	question: Type.String({
 		description:
 			"The single question to ask. ONE question per turn: ask, then end your turn — the answer determines the next.",
@@ -349,11 +355,15 @@ export const explainDisplayInputSchema = Type.Object({
 
 /** The explain authoring contract: the commitment must exist. Empty
  *  result = an explain the dock can arm and the model can grade against. */
-export function explainInputProblems(input: { correctAnswer: string }): string[] {
+export function explainInputProblems(input: {
+	correctAnswer: string;
+	question?: string;
+	position?: unknown;
+}): string[] {
 	if (input.correctAnswer.trim().length === 0) {
 		return ["correctAnswer is required — commit to the full correct answer BEFORE posing the question."];
 	}
-	return [];
+	return chessDiagramProblems(input);
 }
 
 /** The tool names that carry the quizzing mechanic — the teach seam
@@ -365,6 +375,7 @@ export const QUIZ_TOOL_NAMES = ["quiz", "explain", "chessboard"] as const;
 export const quizInputSchema = quizInputObject;
 
 export const askInputSchema = Type.Object({
+	position: Type.Optional(chessDiagramSchema),
 	// No `mode` param — the pi original has none: the mode is inferred from
 	// whether options are present (the dock does exactly this). One less
 	// knob for the model to misuse.

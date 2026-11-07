@@ -41,17 +41,20 @@ export function ChessBoard({
 	draftKey,
 	onSubmit,
 	disabled = false,
+	assessment = "lesson",
 }: {
 	question: ChessQuestion;
 	draftKey: string;
 	onSubmit: (answer: ChessAnswer) => void;
 	disabled?: boolean;
+	assessment?: "lesson" | "engine";
 }) {
 	const [moves, setMoves] = useState<string[]>([]);
 	const [reasoning, setReasoning] = useState("");
 	const [confidence, setConfidence] = useState(50);
 	const [selected, setSelected] = useState<Square | null>(null);
-	const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
+	const [promotion, setPromotion] = useState<{ from: Square; to: Square;
+	} | null>(null);
 	const [ready, setReady] = useState(false);
 	const [error, setError] = useState("");
 	const storageKey = `lh-chess:${draftKey}:${question.fen}:${question.objective}`;
@@ -210,7 +213,9 @@ export function ChessBoard({
 					Restart
 				</Button>
 				<span className="text-xs text-muted-foreground">
-					{state.complete
+					{assessment === "engine"
+						? "Stockfish compares your move after submission"
+						: state.complete
 						? "Line complete"
 						: state.guided
 							? "Fixed opponent replies"
@@ -253,7 +258,11 @@ export function ChessBoard({
 				</p>
 			)}
 			<div className="flex items-center justify-between gap-3">
-				<span className="text-xs text-muted-foreground">Moves and explanation are assessed separately.</span>
+				<span className="text-xs text-muted-foreground">
+					{assessment === "engine"
+						? "Alternative sound moves can receive credit."
+						: "Moves and explanation are assessed separately."}
+				</span>
 				<Button
 					disabled={disabled || !moves.length || !ready || !!promotion}
 					onClick={() => {
@@ -262,7 +271,7 @@ export function ChessBoard({
 						onSubmit(answer);
 					}}
 				>
-					Submit moves
+					{assessment === "engine" ? "Check continuation" : "Submit moves"}
 				</Button>
 			</div>
 		</section>
@@ -320,7 +329,8 @@ export function ChessQuestionDock({
 	);
 }
 
-export function ChessPosition({ fen, color = "white" }: { fen: string; color?: "white" | "black" }) {
+export function ChessPosition({ fen, color = "white" }: { fen: string; color?: "white" | "black";
+}) {
 	const board = new Chess(fen);
 	return (
 		<div className="grid w-48 grid-cols-8 overflow-hidden rounded border" aria-label="Game position">

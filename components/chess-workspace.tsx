@@ -13,6 +13,14 @@ import {
 	RefreshCwIcon,
 	UploadIcon,
 } from "lucide-react";
+import { ChessReviewWorkflow } from "@/components/chess-review-workflow";
+import { ChessMistakePractice } from "@/components/chess-mistake-practice";
+import {
+	ChessEngineNotice,
+	useStockfishStatus,
+	STOCKFISH_CHANGED,
+} from "@/components/chess-engine-status";
+import { ChessHistoryStart } from "@/components/chess-history-start";
 import { ChessBoard, ChessPosition } from "@/components/chess-board";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,14 +29,18 @@ import {
 	KING_SAFETY_EXERCISE,
 	chessProgress,
 	chessWeaknesses,
+	orderedChessGames,
+	mistakePracticeStats,
 	type ChessAnswer,
 	type ChessConceptCard,
 	type ChessQuestion,
 	type ChessState,
 } from "@/src/core";
 
-type Snapshot = ChessState & { weaknesses: ReturnType<typeof chessWeaknesses>; warnings?: string[] };
-type Tab = "Learn" | "Games" | "Progress" | "Connections";
+type Snapshot = ChessState & { weaknesses: ReturnType<typeof chessWeaknesses>; warnings?: string[];
+	reviewFindings?: ReturnType<typeof chessWeaknesses>;
+};
+type Tab = "Learn" | "Games" | "Practise" | "Progress" | "Connections";
 const empty: Snapshot = {
 	version: 1,
 	games: [],
@@ -58,7 +70,8 @@ export function ChessWorkspace() {
 	const [failure, setFailure] = useState("");
 	const [topic, setTopic] = useState("king-safety");
 	const [question, setQuestion] = useState<ChessQuestion>(KING_SAFETY_EXERCISE);
-	const [feedback, setFeedback] = useState<{ moveGrade: string; independent: boolean } | null>(null);
+	const [feedback, setFeedback] = useState<{ moveGrade: string; independent: boolean;
+	} | null>(null);
 	const [username, setUsername] = useState("");
 	const [platform, setPlatform] = useState<"chesscom" | "lichess">("chesscom");
 	const [autoSync, setAutoSync] = useState(false);
@@ -73,7 +86,45 @@ export function ChessWorkspace() {
 	const [pgn, setPgn] = useState("");
 	const [fileName, setFileName] = useState("Manual PGN");
 	const [selectedGame, setSelectedGame] = useState<string | null>(null);
+	const [selectedPly, setSelectedPly] = useState<number | null>(null);
 	const autoStarted = useRef(false);
+	const [gameType, setGameType] = useState("all");
+	const [reviewLimit, setReviewLimit] = useState(10);
+	const [practiceSessionId, setPracticeSessionId] = useState<string>();
+	const reviewRef = useRef<HTMLElement>(null);
+	const engine = useStockfishStatus();
+	const displayedGames = orderedChessGames(state.games, gameType);
+	useEffect(() => {
+		const params = new URLSearchParams(window.location.search);
+		const value = params.get("tab");
+		const tabs = {
+			games: "Games",
+			practice: "Practise",
+			learn: "Learn",
+			progress: "Progress",
+			connections: "Connections",
+		} as const;
+		if (value && value in tabs) setTab(tabs[value as keyof typeof tabs]);
+		if (params.get("gameId")) setSelectedGame(params.get("gameId"));
+	}, []);
+	useEffect(() => {
+		if (tab !== "Games" || !selectedGame || !reviewRef.current) return;
+		reviewRef.current.scrollIntoView({ block: "start", behavior: "instant" });
+		reviewRef.current.focus({ preventScroll: true });
+	}, [selectedGame, selectedPly, tab, state.games.length]);
+	function showGame(id: string, ply?: number) {
+		setSelectedPly(ply ?? null);
+		setSelectedGame(id);
+		setTab("Games");
+		if (id === selectedGame) {
+			reviewRef.current?.scrollIntoView({
+				block: "start",
+				behavior: "instant",
+			});
+			reviewRef.current?.focus({ preventScroll: true });
+		}
+	}
+
 	const refresh = useCallback(async () => {
 		const r = await fetch("/api/chess");
 		if (!r.ok) throw new Error("Could not load chess history.");
@@ -94,6 +145,8 @@ export function ChessWorkspace() {
 					body: JSON.stringify(input),
 				});
 				const result = await r.json();
+				if (result.engineStatus || result.status === "unavailable")
+					window.dispatchEvent(new Event(STOCKFISH_CHANGED));
 				if (!r.ok) throw new Error(result.error ?? "Request failed");
 				await refresh();
 				return result;
@@ -121,6 +174,24 @@ export function ChessWorkspace() {
 			})
 			.catch((e) => setFailure(String(e)));
 	}, [refresh, mutate]);
+	useEffect(() => {
+		if (state.review?.status !== "running") return;
+		const timer = setInterval(() => {
+			void refresh().catch((e) => setFailure(String(e)));
+		}, 1200);
+		return () => clearInterval(timer);
+	}, [state.review?.status, state.review?.id, refresh]);
+	async function startMistakes() {
+		const result = await mutate(
+			{ action: "mistakeStart", speed: gameType, limit: reviewLimit },
+			"Preparing mistake practice…",
+		);
+		if (result) {
+			setPracticeSessionId(result.sessionId);
+			setTab("Practise");
+			if (result.message) setNotice(result.message);
+		}
+	}
 	const card = CHESS_CONCEPTS.find((c) => c.concept_id === topic)!;
 	async function startLesson(concept: ChessConceptCard, context = "") {
 		setBusy("Opening lesson…");
@@ -154,8 +225,8 @@ export function ChessWorkspace() {
 		},
 		{
 			label: "Learning attempts",
-			value: state.exercises.length,
-			sub: `${state.exercises.filter((e) => e.independent).length} independent held-out results`,
+			value: state.exercises.length + mistakePracticeStats(state).attempts,
+			sub: `${state.exercises.filter((e) => e.independent).length + mistakePracticeStats(state).unseen} independent held-out results`,
 		},
 	];
 	return (
@@ -183,6 +254,7 @@ export function ChessWorkspace() {
 						[
 							["Learn", BookOpenIcon],
 							["Games", DownloadIcon],
+							["Practise", BookOpenIcon],
 							["Progress", ChartNoAxesCombinedIcon],
 							["Connections", LinkIcon],
 						] as const
@@ -217,6 +289,30 @@ export function ChessWorkspace() {
 				)}
 				{tab === "Learn" && (
 					<>
+						<ChessHistoryStart
+							state={state}
+							available={engine.available}
+							busy={!!busy}
+							onReview={() => setTab("Games")}
+							onPractice={() => void startMistakes()}
+							onLesson={(c, context) => void startLesson(c, context)}
+							onFreeText={async (text) => {
+								setBusy("Opening chess session…");
+								try {
+									const r = await fetch("/api/chats", {
+										method: "POST",
+										headers: { "Content-Type": "application/json" },
+										body: JSON.stringify({ title: text }),
+									});
+									if (!r.ok) throw new Error("Could not create a chess session.");
+									const { id } = await r.json();
+									window.location.assign(`/chat/${id}?prompt=${encodeURIComponent(text)}`);
+								} catch (e) {
+									setFailure(String(e));
+									setBusy("");
+								}
+							}}
+						/>
 						<div className="grid gap-8 lg:grid-cols-[1fr_1.05fr]">
 							<div>
 								<p className="mb-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -240,7 +336,8 @@ export function ChessWorkspace() {
 								<article className="rounded-xl border bg-card p-6">
 									<div className="mb-4 flex items-center gap-2 text-[10px] uppercase tracking-wider text-[#a1ac8b]">
 										<span className="size-1.5 rounded-full bg-current" /> Concept{" "}
-										{String(CHESS_CONCEPTS.indexOf(card) + 1).padStart(2, "0")} / {CHESS_CONCEPTS.length}
+										{String(CHESS_CONCEPTS.indexOf(card) + 1).padStart(2, "0")} /{" "}
+										{CHESS_CONCEPTS.length}
 									</div>
 									<h2 className="mb-4 font-serif text-3xl">{card.title}</h2>
 									<p className="text-sm leading-7">{card.principle}</p>
@@ -381,6 +478,25 @@ export function ChessWorkspace() {
 								limits.
 							</p>
 						</div>
+						<ChessEngineNotice
+							status={engine.status}
+							error={engine.error}
+							onRefresh={() => void engine.refresh(true)}
+						/>
+						<ChessReviewWorkflow
+							state={state}
+							findings={state.reviewFindings ?? []}
+							speed={gameType}
+							setSpeed={setGameType}
+							limit={reviewLimit}
+							setLimit={setReviewLimit}
+							available={engine.available}
+							busy={!!busy}
+							mutate={mutate}
+							onGame={showGame}
+							onLesson={(c, context) => void startLesson(c, context)}
+							onPractice={() => void startMistakes()}
+						/>
 						<div className="rounded-xl border bg-card p-5">
 							<div className="grid gap-4 md:grid-cols-2">
 								<label className="text-xs">
@@ -446,75 +562,26 @@ export function ChessWorkspace() {
 								</Button>
 							</div>
 						</div>
-						{!state.games.length ? (
-							<div className="rounded-xl border border-dashed p-10 text-center">
-								<span className="text-4xl text-[#a1ac8b]">♟</span>
-								<p className="mt-4 text-sm">Your next game has something to teach you.</p>
-								<p className="mt-2 text-xs text-muted-foreground">
-									Upload a PGN or connect a public username.
-								</p>
-							</div>
-						) : (
-							<div className="overflow-x-auto rounded-xl border">
-								<table className="w-full text-left text-xs">
-									<thead className="bg-card text-muted-foreground">
-										<tr>
-											{["Played", "Players", "Result / ending", "Time control", "Source", "Review"].map(
-												(h) => (
-													<th key={h} className="p-4 font-normal">
-														{h}
-													</th>
-												),
-											)}
-										</tr>
-									</thead>
-									<tbody>
-										{state.games.map((g) => (
-											<tr key={g.id} className="border-t">
-												<td className="p-4">{stamp(g.playedAt)}</td>
-												<td className="p-4 leading-6">
-													{g.white.name} <span className="text-muted-foreground">{g.white.rating ?? ""}</span>
-													<br />
-													{g.black.name} <span className="text-muted-foreground">{g.black.rating ?? ""}</span>
-												</td>
-												<td className="p-4 leading-6">
-													{g.result}
-													<br />
-													<span className="text-muted-foreground">{g.termination}</span>
-												</td>
-												<td className="p-4">
-													{g.speed} · {g.timeControl}
-												</td>
-												<td className="p-4">{displayPlatform(g.platform)}</td>
-												<td className="p-4">
-													<Button
-														size="sm"
-														variant="outline"
-														disabled={!!busy}
-														onClick={() => setSelectedGame(g.id)}
-													>
-														View game
-													</Button>
-												</td>
-											</tr>
-										))}
-									</tbody>
-								</table>
-							</div>
-						)}
 						{selected && (
-							<section className="rounded-xl border bg-card p-5">
+							<section
+								ref={reviewRef}
+								tabIndex={-1}
+								aria-label="Selected game review"
+								data-testid="selected-game-review"
+								className="scroll-mt-4 rounded-xl border border-[#a1ac8b] bg-card p-5 outline-none"
+							>
 								<div className="flex flex-wrap justify-between gap-4">
 									<div>
 										<h3 className="mb-2 text-sm">
-											{selected.white.name} vs {selected.black.name}
+											Selected game: {selected.white.name} vs {selected.black.name}
+											{selectedPly ? ` · position before ply ${selectedPly}` : ""}
 										</h3>
 										<p className="mb-4 text-xs text-muted-foreground">
 											{stamp(selected.playedAt)} · {selected.result} · {selected.termination}
 										</p>
 									</div>
 									<Button
-										disabled={!!busy}
+										disabled={!!busy || !engine.available || state.review?.status === "running"}
 										onClick={async () => {
 											const r = await mutate(
 												{ action: "analyze", gameId: selected.id },
@@ -526,15 +593,29 @@ export function ChessWorkspace() {
 										Analyze with Stockfish
 									</Button>
 								</div>
+								{!engine.available && (
+									<p role="status" className="my-4 text-xs leading-6 text-muted-foreground">
+										{engine.error ||
+											engine.status?.message ||
+											"Checking engine availability before enabling analysis."}{" "}
+										<Link className="underline" href="/chess/setup">
+											Stockfish setup
+										</Link>
+									</p>
+								)}
 								{analysis && (
 									<p className="my-4 text-xs leading-6 text-muted-foreground">
-										{analysis.status} · {analysis.engine} · maximum depth {analysis.settings.depth} /{" "}
-										{analysis.settings.nodes.toLocaleString()} nodes per search. {analysis.message}
+										{analysis.status} · {analysis.engine} · maximum depth {analysis.settings.depth}{" "}
+										/ {analysis.settings.nodes.toLocaleString()} nodes per search. {" "}
+										{analysis.status !== "complete"
+											? "No completed analysis is available for this game. Check engine status above before retrying."
+											: ""}
 									</p>
 								)}
 								<div className="flex gap-5 overflow-x-auto pb-3">
 									{analysis?.positions
-										.filter((p) => p.lossCp !== null && p.lossCp >= 150)
+										.filter((p) => p.ply === selectedPly || (p.lossCp !== null && p.lossCp >= 150))
+										.sort((a, b) => a.ply === selectedPly ? -1 : b.ply === selectedPly ? 1 : a.ply - b.ply)
 										.slice(0, 12)
 										.map((p) => (
 											<div key={p.ply} className="shrink-0">
@@ -572,6 +653,114 @@ export function ChessWorkspace() {
 								</details>
 							</section>
 						)}
+					<p className="text-xs text-muted-foreground" aria-live="polite">
+							Showing {displayedGames.length} of {state.games.length} games · newest first
+						</p>
+						{!state.games.length ? (
+							<div className="rounded-xl border border-dashed p-10 text-center">
+								<span className="text-4xl text-[#a1ac8b]">♟</span>
+								<p className="mt-4 text-sm">Your next game has something to teach you.</p>
+								<p className="mt-2 text-xs text-muted-foreground">
+									Upload a PGN or connect a public username.
+								</p>
+							</div>
+						) : (
+							<div className="overflow-x-auto rounded-xl border">
+								<table className="w-full text-left text-xs">
+									<thead className="bg-card text-muted-foreground">
+										<tr>
+											{[
+												"Played",
+												"Players",
+												"Result / ending",
+												"Time control",
+												"Source",
+												"Review",
+											].map((h, hi) => (
+												<th
+													key={h}
+													className={`p-3 font-normal ${hi >= 2 && hi <= 4 ? "hidden sm:table-cell" : ""}`}
+												>
+													{h}
+												</th>
+											))}
+										</tr>
+									</thead>
+									<tbody>
+										{displayedGames.map((g) => (
+											<tr
+												key={g.id}
+												aria-selected={g.id === selectedGame}
+												className={`border-t ${g.id === selectedGame ? "bg-accent" : ""}`}
+											>
+												<td className="p-3">
+													<time dateTime={g.playedAt ?? undefined}>
+														{stamp(g.playedAt)}
+														<span className="mt-1 block text-[10px] text-muted-foreground">
+															{g.playedAt
+																? new Date(g.playedAt).toLocaleTimeString("en-GB", {
+																		timeZone: "Europe/London",
+																	})
+																: ""}
+														</span>
+													</time>
+												</td>
+												<td className="p-4 leading-6">
+													{g.white.name}{" "}
+													<span className="text-muted-foreground">{g.white.rating ?? ""}</span>
+													<br />
+													{g.black.name}{" "}
+													<span className="text-muted-foreground">{g.black.rating ?? ""}</span>
+												</td>
+												<td className="hidden p-4 leading-6 sm:table-cell">
+													{g.result}
+													<br />
+													<span className="text-muted-foreground">{g.termination}</span>
+												</td>
+												<td className="hidden p-4 sm:table-cell">
+													{g.speed} · {g.timeControl}
+												</td>
+												<td className="hidden p-4 sm:table-cell">{displayPlatform(g.platform)}</td>
+												<td className="p-4">
+													<Button
+														size="sm"
+														variant="outline"
+														disabled={!!busy}
+														onClick={() => showGame(g.id)}
+													>
+														View game
+													</Button>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+						)}
+					</div>
+				)}
+				{tab === "Practise" && (
+					<div className="space-y-5">
+						<ChessEngineNotice
+							status={engine.status}
+							error={engine.error}
+							onRefresh={() => void engine.refresh(true)}
+						/>
+						<ChessMistakePractice
+							key={practiceSessionId ?? "saved"}
+							initialSessionId={practiceSessionId}
+							state={state}
+							available={engine.available}
+							busy={!!busy}
+							mutate={mutate}
+							onReview={() => setTab("Games")}
+							onDiscuss={(item, feedback) =>
+								void startLesson(
+									CHESS_CONCEPTS.find((c) => c.concept_id === item.conceptId) ?? CHESS_CONCEPTS[0]!,
+									`Discuss my completed practice: ${JSON.stringify({ item, feedback })}. Probe my understanding first.`,
+								)
+							}
+						/>
 					</div>
 				)}
 				{tab === "Progress" && (
@@ -593,6 +782,23 @@ export function ChessWorkspace() {
 							))}
 						</div>
 						<RatingSeries state={state} />
+						<section
+							data-testid="mistake-practice-outcomes"
+							className="rounded-xl border bg-card p-5"
+						>
+							<h3 className="mb-3 text-sm">Remembered positions and unseen transfer</h3>
+							<p className="text-xs leading-6 text-muted-foreground">
+								{mistakePracticeStats(state).remembered} remembered/repeated attempts. On previously
+								unused transfer positions: {mistakePracticeStats(state).unseenAccepted} sound
+								continuations / {mistakePracticeStats(state).unseen} comparable first attempts.{" "}
+								{mistakePracticeStats(state).uncertain} attempts have an uncertain engine comparison
+								and are not counted as unseen successes. Personal game positions never count as
+								unseen transfer.
+							</p>
+							<Button className="mt-4" variant="outline" onClick={() => setTab("Practise")}>
+								Continue mistake practice
+							</Button>
+						</section>
 						<div className="rounded-xl border bg-card p-5">
 							<h3 className="mb-4 text-sm">Baseline → practice → prospective games</h3>
 							{chessProgress(state).length ? (
@@ -635,7 +841,8 @@ export function ChessWorkspace() {
 								state.weaknesses.map((w) => (
 									<div key={w.conceptId} className="mb-4 border-t pt-4">
 										<p className="text-sm">
-											{w.conceptId} · {w.examples.length} verified errors / {w.opportunities} defined
+											{w.conceptId} · {w.examples.length} verified errors / {w.opportunities}{" "}
+											defined
 											opportunities
 										</p>
 										<p className="mt-2 text-xs text-[#a1ac8b]">{w.confidence}</p>
@@ -684,8 +891,10 @@ export function ChessWorkspace() {
 									state.exercises.filter((e) => e.independent).filter((e) => e.moveGrade === "matches-lesson")
 										.length
 								}{" "}
-								lesson-rubric matches / {state.exercises.filter((e) => e.independent).length} independent
-								held-out attempts. {state.exercises.filter((e) => !e.independent).length} practised or
+								lesson-rubric matches / {state.exercises.filter((e) => e.independent).length}{" "}
+								independent
+								held-out attempts.{" "}
+								{state.exercises.filter((e) => !e.independent).length} practised or
 								repeated attempts are excluded. Explanation grades await tutor review.
 							</p>
 							<p className="mt-3 text-[10px] text-muted-foreground">

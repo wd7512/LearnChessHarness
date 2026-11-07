@@ -450,7 +450,8 @@ test("engine absence degrades explicitly without replacing immutable games", asy
 		};
 		assert.equal(analysis.status, "unavailable");
 		assert.equal(analysis.positions.length, 0);
-		assert.match(analysis.message, /No evaluation was fabricated/);
+		assert.match(analysis.message, /Settings/);
+		assert.doesNotMatch(analysis.message, /ENOENT|spawn /);
 		assert.deepEqual(f.store.read().games, before);
 	} finally {
 		if (original === undefined) delete process.env.STOCKFISH_PATH;

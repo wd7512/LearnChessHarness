@@ -108,12 +108,23 @@ export function gradeChessAnswer(q: ChessQuestion, answer: ChessAnswer) {
 }
 
 export function chessProgress(state: ChessState) {
-	const concepts = [...new Set(state.exercises.flatMap((e) => e.conceptIds))];
+	const personalPractice = (state.mistakeSessions ?? []).flatMap((s) =>
+		s.attempts.map((a) => ({
+			conceptId: s.items.find((i) => i.id === a.itemId)?.conceptId,
+			answeredAt: a.feedback.answeredAt,
+		})),
+	);
+	const concepts = [...new Set([
+			...state.exercises.flatMap((e) => e.conceptIds),
+			...personalPractice.flatMap((p) => (p.conceptId ? [p.conceptId] : [])),
+		])];
 	return concepts.map((conceptId) => {
-		const firstPractice = state.exercises
+		const firstPractice = [
+			...state.exercises
 			.filter((e) => e.conceptIds.includes(conceptId))
-			.map((e) => e.answeredAt)
-			.sort()[0]!;
+			.map((e) => e.answeredAt),
+			...personalPractice.filter((p) => p.conceptId === conceptId).map((p) => p.answeredAt),
+		].sort()[0]!;
 		const period = (prospective: boolean) => {
 			let errors = 0;
 			let opportunities = 0;
@@ -155,7 +166,8 @@ export interface ChessGame {
 	white: { name: string; rating?: number };
 	black: { name: string; rating?: number };
 	result: string;
-	termination: "checkmate" | "stalemate" | "resignation" | "timeout" | "abandonment" | "draw" | "unknown";
+	termination:
+		| "checkmate" | "stalemate" | "resignation" | "timeout" | "abandonment" | "draw" | "unknown";
 	moves: string[];
 	initialFen: string;
 	clocks: { ply: number; clock: string }[];
@@ -225,6 +237,8 @@ export interface ChessState {
 	connections: ChessConnection[];
 	ratings: ChessRating[];
 	exercises: ChessExerciseEvent[];
+	review?: import("./chess-workflows.ts").ChessReviewProgress;
+	mistakeSessions?: import("./chess-workflows.ts").ChessMistakeSession[];
 }
 
 /** Only include detectable opportunities. CP loss alone never assigns a concept. */

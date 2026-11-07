@@ -8,6 +8,8 @@ import { useEnterSubmits } from "@/components/enter-submits";
 import { PathInput } from "@/components/path-input";
 import { MalformedQuestion } from "@/components/malformed-question";
 import { ToolContentResponse } from "@/components/ai-elements/message";
+import { ChessDiagram } from "@/components/chess-diagram";
+import { questionDiagram } from "@/src/core";
 import { cn } from "@/lib/utils";
 import {
 	buildAnswer,
@@ -285,7 +287,8 @@ function QuestionDockForm({
 						: "single-select"
 						: "text";
 		const options = normalizeOptions(
-			(quizInput?.options ?? askInput?.options ?? []) as { label: string; value?: string }[],
+			(quizInput?.options ?? askInput?.options ?? []) as { label: string; value?: string;
+			}[],
 		);
 		const ordered = kind === "quiz" && options.length > 0 ? shuffleOptions(options, seededRandom(toolCallId)) : options;
 		const q: QuestionData = {
@@ -586,6 +589,8 @@ function QuestionDockForm({
 					</div>
 				)}
 
+				{questionDiagram(input) && <ChessDiagram position={questionDiagram(input)!} />}
+
 				{qd.mode !== "text" && (
 					<div className="flex flex-col gap-2 pb-2" role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
 						{qd.options.map((opt, i) => {
@@ -689,7 +694,8 @@ function QuestionDockForm({
 									)}
 								>
 									{sel.otherSelected && (
-										<span className={cn(qd.mode === "multi-select" ? "text-base leading-none" : "size-1.5 rounded-full bg-current")}>
+										<span className={cn(qd.mode === "multi-select" ? "text-base leading-none" : "size-1.5 rounded-full bg-current",
+											)}>
 											{qd.mode === "multi-select" ? "✓" : ""}
 										</span>
 									)}

@@ -4,11 +4,11 @@ This is a maintainer reference. For installation and normal use, start with [Get
 
 ## Platforms and prerequisites
 
-| Platform | Release runner | Packages | In-app update |
-| --- | --- | --- | --- |
-| macOS, Apple Silicon | `macos-26` arm64 | Signed/notarized DMG + ZIP | ZIP through Squirrel.Mac |
-| Windows, x64 | `windows-2025` | Unsigned per-user NSIS installer | NSIS |
-| Linux, x64 | `ubuntu-24.04` | AppImage + `.deb` | AppImage replacement; `.deb` through dpkg/apt, with elevation if needed |
+| Platform             | Release runner   | Packages                         | In-app update                                                           |
+| -------------------- | ---------------- | -------------------------------- | ----------------------------------------------------------------------- |
+| macOS, Apple Silicon | `macos-26` arm64 | Signed/notarized DMG + ZIP       | ZIP through Squirrel.Mac                                                |
+| Windows, x64         | `windows-2025`   | Unsigned per-user NSIS installer | NSIS                                                                    |
+| Linux, x64           | `ubuntu-24.04`   | AppImage + `.deb`                | AppImage replacement; `.deb` through dpkg/apt, with elevation if needed |
 
 Windows may show SmartScreen/unknown-publisher warnings. AppImage is the primary Linux download; `.deb` updates may require an administrator password. Both use the same download/restart banner. Targets/signing are defined in [`electron-builder.yml`](../electron-builder.yml); CI/release uses **Node 26**.
 
@@ -30,13 +30,35 @@ Build **on each target OS**. Next traces native binaries for its build machine; 
 4. `node scripts/smoke-provider-runtime.mjs` — check the **fresh trace before curation**, including native provider initialization and fixture payloads, not real sign-in/generation.
 5. `node scripts/build-server.mjs` — copy static assets, validate prompt assets, refuse known data/credential leaks, and remove only standalone-root old installers/development Electron.
 6. `node scripts/smoke-server.mjs --electron` — check renderer/demo dependencies, providers, gzip backpressure, and isolated standalone HTTP boot under Electron's Node.
-7. Package with Electron Builder using the appropriate local/release policy below.
+7. `npm run stockfish:prepare` and `node scripts/smoke-stockfish.mjs` — stage the pinned native Stockfish 19 payload and prove a fresh UCI search without PATH or STOCKFISH_PATH.
+8. Package with Electron Builder using the appropriate local/release policy below.
 
 The shell/updater ships in `app.asar`; the server/native renderers ship unpacked as `extraResources`. Pi/PDF/canvas/resvg/Photon dynamic assets are explicitly traced in [`next.config.ts`](../next.config.ts). Keep trace exclusions narrow: broad `dist/**` or `data/**` patterns can remove dependency assets. Curation guards are not a substitute for inspecting a changed payload.
 
 The release workflow also checks providers from the **packaged** payload under host Node and packaged Electron, then exercises the demo helper using the app's Electron (Xvfb on Linux). HTTP boot or catalog output alone does not test these lazy paths.
 
 `smoke-image-runtime.mjs` separately checks synthetic Photon in-process/worker resizing in standalone output. It accepts `--standalone <dir>` and `--runtime <binary>`; it is **not currently invoked by CI/release workflows**.
+
+### Bundled chess engine
+
+Electron Builder's `beforePack` hook automatically stages the target engine from
+checksum-pinned official Stockfish 19 archives. `extraResources` copies it outside
+asar to `resources/stockfish`; the launcher passes that location to the server.
+No user installation or runtime download is required. The `afterPack` gate checks
+the actual packaged resources, licences and rebuild inputs and executes a native
+UCI search on the host OS. macOS signs the engine as an additional binary.
+
+Each payload includes the GPL licence, AUTHORS, archive/source provenance,
+corresponding source, build scripts/wiki and the exact NNUE input with its full
+SHA-256 digest. Keep these together when redistributing. Generated payloads and
+download caches are ignored by git. The source manifest is
+[`scripts/stockfish-assets.json`](../scripts/stockfish-assets.json); see
+[`docs/chess.md`](chess.md) for discovery, Settings overrides and browser setup.
+The normal CI and release matrix runs the native engine gate on all three OSes.
+`scripts/smoke-chess-desktop.mjs` additionally boots the standalone server with
+Electron’s bundled Node and an empty profile/PATH/engine override, imports a
+synthetic game and verifies completed Stockfish analysis and tutor history counts.
+The release matrix runs it against the actual packaged resources.
 
 ### Local packages
 
@@ -64,14 +86,14 @@ npx electron-builder --linux --x64 --publish never # Linux
 
 The draft must contain **exactly 11 uploaded, nonempty assets**:
 
-| Assets | Purpose |
-| --- | --- |
-| `LearnHarness-<v>-arm64.dmg` + `.blockmap` | macOS installer |
-| `LearnHarness-<v>-arm64-mac.zip` + `.blockmap` | macOS updater |
-| `LearnHarness-<v>-x64-setup.exe` + `.blockmap` | Windows installer/updater |
-| `LearnHarness-<v>-x86_64.AppImage` | Linux AppImage |
-| `LearnHarness-<v>-amd64.deb` | Debian package |
-| `latest-mac.yml`, `latest.yml`, `latest-linux.yml` | Updater feeds |
+| Assets                                             | Purpose                   |
+| -------------------------------------------------- | ------------------------- |
+| `LearnHarness-<v>-arm64.dmg` + `.blockmap`         | macOS installer           |
+| `LearnHarness-<v>-arm64-mac.zip` + `.blockmap`     | macOS updater             |
+| `LearnHarness-<v>-x64-setup.exe` + `.blockmap`     | Windows installer/updater |
+| `LearnHarness-<v>-x86_64.AppImage`                 | Linux AppImage            |
+| `LearnHarness-<v>-amd64.deb`                       | Debian package            |
+| `latest-mac.yml`, `latest.yml`, `latest-linux.yml` | Updater feeds             |
 
 Feed versions, exact referenced asset sets, bare filenames, sizes, and legacy path/hash fields must agree; macOS's ZIP must be first. Missing/stale extra assets, path traversal/URLs, or builder naming drift fail validation. The validator does not download/hash every installer; it checks draft metadata and downloaded feeds.
 
@@ -81,13 +103,13 @@ The verification job needs `contents: write` to list private drafts but performs
 
 Repository Actions secrets:
 
-| Secret | Purpose |
-| --- | --- |
-| `MAC_CSC_LINK` | Base64 Developer ID Application `.p12`, including private key |
-| `MAC_CSC_KEY_PASSWORD` | `.p12` password |
-| `APPLE_ID` | Notarization Apple ID |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password |
-| `APPLE_TEAM_ID` | Apple developer team ID |
+| Secret                        | Purpose                                                       |
+| ----------------------------- | ------------------------------------------------------------- |
+| `MAC_CSC_LINK`                | Base64 Developer ID Application `.p12`, including private key |
+| `MAC_CSC_KEY_PASSWORD`        | `.p12` password                                               |
+| `APPLE_ID`                    | Notarization Apple ID                                         |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password                                         |
+| `APPLE_TEAM_ID`               | Apple developer team ID                                       |
 
 The workflow maps the certificate to `CSC_LINK`/`CSC_KEY_PASSWORD`; signing credentials reach packaging only, not the Next build. The built-in `GITHUB_TOKEN` supplies scoped `GH_TOKEN`; no separate release token is needed. Never commit keys, certificates, passwords, or environment-secret files.
 

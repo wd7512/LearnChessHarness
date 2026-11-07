@@ -9,6 +9,8 @@ import { useEnterSubmits } from "@/components/enter-submits";
 import { PathInput } from "@/components/path-input";
 import { cn } from "@/lib/utils";
 import { ChessBoard } from "@/components/chess-board";
+import { ChessDiagram } from "@/components/chess-diagram";
+import { questionDiagram } from "@/src/core";
 import { parseChessQuestion } from "@/src/core";
 
 /**
@@ -36,7 +38,7 @@ export interface PracticeDockProps {
 	problemCallId: string;
 	/** The pose's arguments — only the statement is the learner's (the
 	 *  mode badge would edge toward announcing the target; dropped). */
-	input: { statement: string; chess?: unknown };
+	input: { statement: string; chess?: unknown; position?: unknown };
 	/** Collapse state, owned by the DockOverlay. */
 	expanded: boolean;
 	onExpand: () => void;
@@ -113,8 +115,11 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				<div className="lh-prose text-[15px]">
 					<ToolContentResponse>{input.statement}</ToolContentResponse>
 				</div>
+				{questionDiagram(input) && <ChessDiagram position={questionDiagram(input)!} />}
 			</div>
-			{parseChessQuestion(input.chess) && <div className="max-h-[65vh] overflow-auto p-4"><ChessBoard question={parseChessQuestion(input.chess)!} draftKey={problemCallId} disabled={compactionRunning} onSubmit={answer => onSubmit(JSON.stringify({ chessAnswer: answer }))} /></div>}
+			{parseChessQuestion(input.chess) && (
+				<div className="max-h-[65vh] overflow-auto p-4"><ChessBoard question={parseChessQuestion(input.chess)!} draftKey={problemCallId} disabled={compactionRunning} onSubmit={(answer) => onSubmit(JSON.stringify({ chessAnswer: answer }))} /></div>
+			)}
 
 			{/* The learner's half: Enter SENDS (owner round 2, 2026-10-05);
 			    Shift+Enter makes a newline — less to decide about. */}

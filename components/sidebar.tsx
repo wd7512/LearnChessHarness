@@ -649,7 +649,7 @@ function SessionsSidebar() {
 
 	return (
 		<aside
-			className={cn("sidebar-motion shrink-0 overflow-hidden duration-200", open ? "w-72" : "w-0", pathname === "/chess" && "max-md:hidden")}
+			className={cn("sidebar-motion shrink-0 overflow-hidden duration-200", open ? "w-72" : "w-0", pathname?.startsWith("/chess") && "max-md:hidden")}
 			aria-hidden={!open}
 		>
 			<div className="flex h-full w-72 flex-col border-r bg-background">

@@ -15,10 +15,11 @@ review does not certify a principle as an engine verdict. Six short, rule-checke
 opening examples are attributed to the CC0 Lichess opening dataset; these are not
 the entire ECO database and do not imply empirical move frequencies.
 
-Teaching and probing have two additional reference tools and one answer modality.
+Teaching, probing and practice have chess references, live history access and a board answer modality.
 Lessons launched from this workspace explicitly request chess and expose both MCQ
 and recall beside the board. Other lessons retain their existing selected mechanic:
 
+- `chess_history`: compact connected-account, game, analysis, pattern and practice summary; lazy game/position detail. It is refreshed for every tutor turn, including existing sessions. Imported history is separate from the general learning map; retrieval errors never become fabricated empty history.
 - `chess_reference`: versioned concept cards and named opening examples.
 - `chess_analyze`: real, bounded Stockfish evaluations of a FEN or full UCI line.
 - `chessboard`: a validated FEN, learner side, one to eight learner moves,
@@ -46,6 +47,12 @@ acceptable moves when the bounded analysis supports them. Move matching and
 explanation quality are separate; explanation grades await the tutor's review,
 which is conveyed in the normal conversation, not an invented numeric score.
 
+Position-dependent text questions (MCQ, recall and practice) include a static `position`
+diagram with a legal FEN, accessible written description, coordinates and neutral
+candidate-square highlights. The display does not label which candidate is legal.
+The native question contracts reject invalid diagrams and obvious piece/square
+questions without one; tutor instructions also require diagrams for positional questions.
+
 ## Import and review
 
 Upload multiple PGNs, or paste them, and enter the learner's name as it appears in
@@ -63,15 +70,34 @@ is capped at 600 plies for interactive analysis. A failed retry preserves existi
 successful analysis. Mate scores are kept separate rather than converted into
 invented centipawn values.
 
-Install an official Stockfish binary for your system and set, for example:
+Desktop packages include **Stockfish 19** for macOS arm64, Windows x64 and Linux
+x64. Fresh installations discover the bundled executable automatically; there is
+no runtime download, command-line installation or environment variable to configure.
+Settings → **Chess engine** shows the checked version, discovery source and status,
+and accepts an optional absolute executable-path override. Clear it to restore
+automatic discovery. macOS x64 staging is also supported for maintainers.
 
-```sh
-STOCKFISH_PATH=/absolute/path/to/stockfish npm run dev
-```
+Browser/development installations execute Stockfish on the **server**, not in the
+browser. Download the official release for the server OS, then save its executable
+path in Settings → Chess engine. `STOCKFISH_PATH` or `stockfish` on server `PATH`
+remain supported alternatives. Discovery priority is Settings override, environment,
+desktop bundle, then PATH. `/chess/setup` gives instructions and desktop repair steps.
+A UCI handshake and a small real search check availability **before** analysis or
+mistake-practice controls enable; failures have setup links, never raw spawn errors.
+Study and imports remain usable while the engine is unavailable.
 
-If unset, the executable `stockfish` is searched on `PATH`. No executable is
-downloaded by the app, and no binary is bundled. Missing or failed engines leave
-import and study usable and produce an explicit unavailable result.
+Games appear newest-first using the full recorded timestamp; unknown dates sort
+last. The game-type filter defaults to All and supports bullet, blitz, rapid,
+classical, daily and unknown. Selecting a game focuses and immediately scrolls its
+identified review above the list on desktop and mobile.
+
+**Review my games / Find areas to improve** is the primary Games workflow. Select
+the most recent 10, 25, 50 or 100 games and a time control. Review runs sequentially,
+shows durable progress, reuses completed analyses and preserves successful work
+on partial failure. Cancel finishes the current game. A server restart marks an
+interrupted review honestly and offers resumption by starting again. Findings use
+only that selected group, link to original game positions and launch a lesson that
+probes understanding first. Individual-game analysis remains available.
 
 The first concept detector is deliberately narrow: **piece safety**. An opportunity
 is a learner position containing an attacked, undefended non-pawn piece. A candidate
@@ -80,6 +106,30 @@ engine loss. Centipawn loss alone does not attach a concept. Patterns include
 supporting game positions, opportunity counts, examples and limitations; fewer
 than three distinct supporting games are labelled insufficient evidence. This
 rule-based detector is a hypothesis generator, not a diagnosis of understanding.
+
+## Practise my mistakes
+
+Launch from analyzed history without opening individual games. Sessions select up
+to four distinct critical pre-move positions from the chosen recent-game scope.
+The original move and engine reference stay hidden until a legal move is submitted.
+Stockfish freshly checks the original and chosen continuation, reports its version,
+search bounds and verified lines, and compares both on the learner's side. Sound
+alternatives within 80 cp of the bounded reference are accepted; mate/centipawn
+comparisons that cannot support a verdict are marked uncertain. Explanations are
+factual engine comparisons, not a claimed diagnosis or invented explanation grade.
+
+Attempts persist for retry and later-session resumption. Personal positions and
+retries are remembered practice. Up to four authored piece-safety transfer positions
+are paired where available, excluding imported positions, curriculum examples and
+positions already served in a session. Only the first comparable answer counts
+as an unseen result. When this small pool is exhausted, the app states that only
+remembered practice is available; it does not relabel repeats as unseen.
+
+The Learn screen and free-text tutor starts distinguish no imported games,
+imported games awaiting analysis, analyzed games without sufficient patterns, and
+supported recurring patterns. They offer history review, targeted lessons,
+personal mistake practice, continuation of a chess topic or a fresh diagnostic.
+Engine requirements and data-access failures remain explicit.
 
 ## Optional public accounts
 
@@ -121,7 +171,7 @@ file permissions and atomic temp-file replacement. Like the rest of LearnHarness
 use one server owner per data profile. Never run two servers against this file.
 Normal session records remain the durable truth for lesson answers; the chess API
 reconciles their structured board evidence idempotently when progress is read.
-Projection failures are reported and leave original sessions intact.
+Projection failures are reported and leave original sessions intact. Tutor history reads also reconcile saved answers, so opening the workspace is not required. Review progress and mistake attempts use this same atomic store. The optional engine override lives separately in `chess/engine.json`.
 
 Progress separates baseline and later games using recorded game dates and the
 first targeted practice timestamp. Error rates require defined opportunities;
@@ -145,13 +195,17 @@ npm run lint
 npm run build
 ```
 
-The new `tests/chess.test.ts` covers legal lines, special moves, native question and
+`tests/chess.test.ts` covers legal lines, special moves, native question and
 practice integration, PGN deduplication/termination/clocks, platform normalisation,
 preview/commit, rating separation, failed sync preservation, held-out reuse,
 engine failure and traceable hypotheses. Its platform traffic is synthetic.
+`tests/chess-workflows.test.ts` covers scoped review/recovery, durable mistake
+practice, alternative moves, unseen-result separation and bundled engine discovery.
+`tests/chess-history-diagram.test.tsx` checks diagram contracts/rendering and
+connected/imported/pending/analyzed history, lazy retrieval and access failures.
 
 For the browser smoke, start the app with a **disposable** data/auth profile and
-an installed Stockfish, then run:
+an available Stockfish, then run:
 
 ```sh
 LH_SMOKE_URL=http://localhost:3000 \
@@ -166,6 +220,27 @@ three real Stockfish analyses, traceable recurring errors, and a 390px mobile
 viewport. It requires no model credentials or personal account. Model-authored
 lesson quality and third-party uptime are not established by these fixtures.
 
+The follow-up browser smoke deliberately imports 120 synthetic timestamped games,
+checks newest-first ordering and speed filters, preflight/Settings setup, cross-game
+review, hidden-answer practice/feedback, grounded history counts and mobile review:
+
+```sh
+npm run stockfish:prepare
+LH_SMOKE_URL=http://localhost:3012 \
+LH_CHESS_SMOKE_DISPOSABLE=1 \
+node scripts/smoke-chess-workflows.mjs
+```
+
+Use a fresh disposable profile with **no** default engine; the script tests unavailable
+preflight, then sets the prepared binary through Settings. The script changes only
+that disposable profile and requires no model keys or connected personal account.
+
+`node scripts/smoke-chess-desktop.mjs` checks a fresh standalone profile under
+Electron’s bundled Node with no system engine or configured path. It imports and
+analyzes a synthetic game and confirms the same counts through tutor history.
+`--standalone` and `--runtime` point it at a packaged app; the release matrix runs
+this gate on each target OS.
+
 ## Dependencies and licences
 
 - LearnHarness retains AGPL-3.0-only.
@@ -173,10 +248,16 @@ lesson quality and third-party uptime are not established by these fixtures.
   runs in both the React 19 browser and the Node server. It is the only new runtime
   npm dependency. The board is a small native React view using Unicode pieces;
   no Chess.com assets or third-party board art are copied.
-- Stockfish is an optional external UCI process, GPL-3.0. Obtain official releases
-  and corresponding source from <https://github.com/official-stockfish/Stockfish>.
-  Any later binary distribution must include its GPL licence and corresponding
-  source obligations. This change redistributes no Stockfish binary.
+- Stockfish 19 is a separate, unmodified GPL-3.0-or-later UCI executable. Packaging
+  downloads checksum-pinned official platform archives at build time and ships
+  `COPYING-GPL-3.0.txt`, AUTHORS, provenance, corresponding source/build scripts/wiki
+  and the exact SHA-256-verified embedded NNUE rebuild input alongside the binary
+  in `resources/stockfish/`. Source is available directly to recipients, without
+  relying on a future source offer. See `SOURCE-AND-LICENCE.txt` and
+  <https://github.com/official-stockfish/Stockfish/tree/sf_19>.
+  `scripts/stockfish-assets.json` records release/archive/network hashes;
+  `stockfish:prepare` stages them, and packaging fails its native UCI smoke gate
+  if a required payload or analysis is unavailable. No engine binary is stored in git.
 - The named opening examples are derived from the CC0 Lichess chess-openings
   dataset: <https://github.com/lichess-org/chess-openings>.
 - The FIDE Laws link is a source reference; the law text is not redistributed.

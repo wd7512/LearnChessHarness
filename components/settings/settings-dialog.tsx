@@ -42,6 +42,7 @@ import {
 import { useAppearance } from "./appearance.tsx";
 import { SettingsSection } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
+import { ChessEngineSection } from "./chess-engine-section.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
@@ -59,6 +60,7 @@ import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
 const SECTIONS = [
 	{ id: "keys", label: "Providers" },
 	{ id: "agent", label: "Agent" },
+	{ id: "chess", label: "Chess engine" },
 	{ id: "appearance", label: "Appearance" },
 	{ id: "graph", label: "Graph" },
 	{ id: "keyboard", label: "Keyboard", hint: "Stored on this device" },
@@ -307,7 +309,7 @@ export function SettingsDialogBody({
 				<nav
 					aria-label="Settings sections"
 					data-testid="settings-nav"
-					className="flex w-44 shrink-0 flex-col gap-1 border-r border-border p-2"
+					className="flex w-28 shrink-0 flex-col gap-1 border-r border-border p-2 sm:w-44"
 				>
 					{SECTIONS.map((s) => (
 						<button
@@ -357,6 +359,11 @@ export function SettingsDialogBody({
 						</p>
 					) : (
 						<div>
+							{active === "chess" && (
+								<SettingsSection title="Chess engine" testid="section-chess">
+									<ChessEngineSection />
+								</SettingsSection>
+							)}
 							{active === "general" && (
 								<SettingsSection
 									title="General"

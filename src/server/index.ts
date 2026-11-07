@@ -6,6 +6,9 @@
 
 export * from "./chat-handler.ts";
 export * from "./chess.ts";
+export * from "./chess-engine.ts";
+export * from "./chess-history.ts";
+export { subscriptionRequestOrigin } from "./web-subscription-http.ts";
 export * from "./events-stream.ts";
 export * from "./chats.ts";
 export * from "./graph.ts";

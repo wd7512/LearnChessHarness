@@ -66,4 +66,7 @@ jobs:
       # Check the fresh trace before any static copying/curation.
       - run: node scripts/smoke-provider-runtime.mjs
       - run: node scripts/build-server.mjs
+      - run: npm run stockfish:prepare
+      - run: node scripts/smoke-stockfish.mjs
+      - run: node scripts/smoke-chess-desktop.mjs
       - run: node scripts/smoke-server.mjs --electron

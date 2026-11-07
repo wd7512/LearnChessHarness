@@ -19,12 +19,38 @@ import {
 	type ChessFetch,
 	type ChessSyncPayload,
 } from "./chess-platforms.ts";
-import { analyzeChessGame, StockfishEngine } from "../agent/chess-engine.ts";
+import {
+	type ChessEngineProvider,
+	stockfishRuntime,
+	StockfishUnavailable,
+} from "./chess-engine.ts";
+import { analyzeStoredChessGame, ChessReviewer } from "./chess-review.ts";
+import { ChessMistakes } from "./chess-mistakes.ts";
+import { reviewChessState } from "../core/chess-workflows.ts";
 import { subscriptionRequestOrigin } from "./web-subscription-http.ts";
 import { type LhMessage } from "../core/native-messages.ts";
 
 const platform = z.enum(["chesscom", "lichess"]);
 const bodySchema = z.discriminatedUnion("action", [
+	z.object({
+		action: z.literal("reviewStart"),
+		speed: z.string().max(30),
+		limit: z.number().int().min(1).max(100),
+		reanalyze: z.boolean().optional(),
+	}),
+	z.object({ action: z.literal("reviewCancel") }),
+	z.object({
+		action: z.literal("mistakeStart"),
+		speed: z.string().max(30),
+		limit: z.number().int().min(1).max(100),
+	}),
+	z.object({
+		action: z.literal("mistakeAnswer"),
+		sessionId: z.string(),
+		itemId: z.string(),
+		move: z.string().regex(/^[a-h][1-8][a-h][1-8][qrbn]?$/),
+		reasoning: z.string().max(20_000).optional(),
+	}),
 	z.object({
 		action: z.literal("import"),
 		pgn: z
@@ -61,6 +87,8 @@ const bodySchema = z.discriminatedUnion("action", [
 ]);
 
 export class ChessService {
+	readonly reviewer: ChessReviewer;
+	readonly mistakes: ChessMistakes;
 	private previews = new Map<
 		string,
 		{ connection: ChessConnection; payload: ChessSyncPayload; expires: number }
@@ -69,18 +97,38 @@ export class ChessService {
 	constructor(
 		readonly store: ChessStore,
 		private fetcher: ChessFetch = fetch,
-	) {}
+		readonly engineRuntime: ChessEngineProvider = stockfishRuntime,
+	) {
+		this.reviewer = new ChessReviewer(store, engineRuntime);
+		this.mistakes = new ChessMistakes(store, engineRuntime);
+	}
 	snapshot() {
+		this.reviewer.recover();
 		const state = this.store.read();
 		return {
 			...state,
 			weaknesses: chessWeaknesses(state),
 			concepts: CHESS_CONCEPTS,
 			openings: CHESS_OPENINGS,
+			reviewFindings: state.review ? chessWeaknesses(reviewChessState(state)) : [],
 		};
 	}
 	async mutate(raw: unknown) {
 		const input = bodySchema.parse(raw);
+		if (input.action === "reviewStart") {
+			if (this.busy.has("analysis"))
+				throw new Error(
+					"An individual game analysis is running. Wait for it to finish before reviewing a group.",
+				);
+			return this.reviewer.start(input);
+		}
+		if (input.action === "reviewCancel") {
+			this.reviewer.cancel();
+			return { cancelled: true };
+		}
+		if (input.action === "mistakeStart") return this.mistakes.start(input);
+		if (input.action === "mistakeAnswer")
+			return this.mistakes.answer(input.sessionId, input.itemId, input.move, input.reasoning);
 		if (input.action === "import") {
 			const games: ChessGame[] = [];
 			const rejected: string[] = [];
@@ -101,31 +149,27 @@ export class ChessService {
 		}
 		if (input.action === "exercise") return this.recordExercise(input.question, input.answer);
 		if (input.action === "analyze") {
-			if (this.busy.has("analysis"))
+			if (this.busy.has("analysis") || this.reviewer.running)
 				throw new Error("A game analysis is already running. Try again when it finishes.");
 			const game = this.store.read().games.find((g) => g.id === input.gameId);
 			if (!game) throw new Error("Game not found.");
 			if (game.moves.length > 600) throw new Error("This game exceeds the 600-ply analysis limit.");
 			this.busy.add("analysis");
-			const engine = new StockfishEngine();
 			try {
-				await engine.ready();
-				const analysis = await analyzeChessGame(game, engine);
-				this.store.update((s) => {
-					if (!s.games.some((g) => g.id === game.id))
-						throw new Error("The game was cleared during analysis.");
-					s.analyses = [...s.analyses.filter((a) => a.gameId !== game.id), analysis];
-				});
-				return analysis;
+				return await analyzeStoredChessGame(this.store, this.engineRuntime, game.id);
 			} catch (e) {
 				const analysis = {
 					gameId: game.id,
 					status: "unavailable" as const,
-					engine: engine.name,
+					engine: "Stockfish unavailable",
 					settings: { depth: 12, nodes: 100_000 },
 					analyzedAt: new Date().toISOString(),
 					positions: [],
-					message: `Analysis unavailable: ${e instanceof Error ? e.message : "engine error"}. No evaluation was fabricated. Install Stockfish and set STOCKFISH_PATH to its executable.`,
+					message:
+						e instanceof StockfishUnavailable
+							? e.message
+							: "Stockfish could not complete this analysis. Existing games and successful analyses are preserved. Check Settings → Chess engine and retry.",
+					setupUrl: "/chess/setup",
 				};
 				// A failed retry never replaces an existing successful analysis.
 				this.store.update((s) => {
@@ -137,7 +181,6 @@ export class ChessService {
 				});
 				return analysis;
 			} finally {
-				engine.close();
 				this.busy.delete("analysis");
 			}
 		}
@@ -347,7 +390,8 @@ export class ChessService {
 	}
 }
 
-const chessGlobal = globalThis as typeof globalThis & { __lhChess?: ChessService };
+const chessGlobal = globalThis as typeof globalThis & { __lhChess?: ChessService;
+};
 export const chessService = (chessGlobal.__lhChess ??= new ChessService(
 	new ChessStore(path.join(PATHS.data, "chess", "history.json")),
 ));
@@ -363,6 +407,16 @@ export async function chessMutationResponse(req: Request) {
 	try {
 		return Response.json(await chessService.mutate(await req.json()));
 	} catch (e) {
+		if (e instanceof StockfishUnavailable)
+			return Response.json(
+				{
+					error: e.message,
+					code: e.code,
+					engineStatus: e.engineStatus,
+					setupUrl: e.engineStatus.setupUrl,
+				},
+				{ status: 503 },
+			);
 		return Response.json(
 			{ error: e instanceof Error ? e.message : "Chess operation failed" },
 			{ status: 400 },

@@ -7,6 +7,8 @@ import { ThinkingBlock } from "@/components/thinking-block";
 import { PathText } from "@/components/file-path-chip";
 import { cn } from "@/lib/utils";
 import { ToolContentResponse } from "@/components/ai-elements/message";
+import { ChessDiagram } from "@/components/chess-diagram";
+import { questionDiagram } from "@/src/core";
 import type { QuestionAnswerData } from "@/src/core";
 import { answerForPresentation, parseAskInput, parseQuizInput } from "@/src/core";
 
@@ -20,10 +22,13 @@ import { answerForPresentation, parseAskInput, parseQuizInput } from "@/src/core
  * client — the card reveals his answer, the committed correct answer, and
  * the explanation, with NO verdict chips (owner ruling 2026-09-27).
  */
-export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionAnswerData; input?: unknown }) {
+export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionAnswerData; input?: unknown;
+}) {
 	const answer = answerForPresentation(savedAnswer, input);
 	const [whyOpen, setWhyOpen] = useState(false); // the tucked explanation (predictions, owner 2026-10-03)
-	if (answer.kind === "chessboard" && !answer.dismissed) return <div data-testid="answered-chess-card" className="space-y-2 rounded-xl border bg-card p-4 text-sm"><strong>{answer.questionText}</strong><p>{answer.chess?.uciMoves.join(" → ")}</p><p>{answer.chessGrade?.moveGrade === "matches-lesson" ? "Moves match the lesson rubric." : "Legal continuation outside the lesson rubric."}</p><p className="text-muted-foreground">Explanation: awaiting tutor review. Verification: rules and lesson rubric.</p>{answer.chess?.reasoning && <p>{answer.chess.reasoning}</p>}</div>;
+	if (answer.kind === "chessboard" && !answer.dismissed) return (
+			<div data-testid="answered-chess-card" className="space-y-2 rounded-xl border bg-card p-4 text-sm"><strong>{answer.questionText}</strong><p>{answer.chess?.uciMoves.join(" → ")}</p><p>{answer.chessGrade?.moveGrade === "matches-lesson" ? "Moves match the lesson rubric." : "Legal continuation outside the lesson rubric."}</p><p className="text-muted-foreground">Explanation: awaiting tutor review. Verification: rules and lesson rubric.</p>{answer.chess?.reasoning && <p>{answer.chess.reasoning}</p>}</div>
+		);
 	if (answer.dismissed) {
 		return (
 			<div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
@@ -99,7 +104,9 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 				</div>
 			)}
 
-			{((answer.options?.length ?? 0) > 0 || answer.other) && (
+			{questionDiagram(input) && <ChessDiagram position={questionDiagram(input)!} />}
+
+				{((answer.options?.length ?? 0) > 0 || answer.other) && (
 				<div className="flex flex-col gap-1.5 text-sm">
 					{answer.options?.map((opt) => {
 						const sel = selectedIdx.has(opt.index);
@@ -130,7 +137,9 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 									>
 										{/* Owner round 8: a touch smaller than the text (size-4→size-3.5,
 											   ≈14px vs the 16px row) while centered. */}
-										{(key || sel) && <GlyphMark kind={key ? "check" : "x"} className="size-3.5" />}
+										{(key || sel) && (
+												<GlyphMark kind={key ? "check" : "x"} className="size-3.5" />
+											)}
 									</span>
 								)}
 								<span className={cn(!sel && "text-muted-foreground")}>
@@ -161,7 +170,9 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 				</div>
 			)}
 
-			{answer.text && <div className="lh-prose mt-2 whitespace-pre-wrap">“<PathText text={answer.text} />”</div>}
+			{answer.text && (
+					<div className="lh-prose mt-2 whitespace-pre-wrap">“<PathText text={answer.text} />”</div>
+				)}
 
 			{/* The confidence record (owner round 6): the slider's rail, disc
 			    removed — the missing handle itself says "this is a record, not a

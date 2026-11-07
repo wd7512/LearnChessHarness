@@ -18,6 +18,17 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 module.exports = async function afterPack(context) {
+	const resources =
+		context.electronPlatformName === "darwin"
+			? path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`,
+					"Contents",
+					"Resources",
+				)
+			: path.join(context.appOutDir, "resources");
+	const { verifyStockfishBundle } = await import("./smoke-stockfish.mjs");
+	await verifyStockfishBundle(path.join(resources, "stockfish"), {
+		execute: context.electronPlatformName === process.platform,
+	});
 	if (context.electronPlatformName !== "darwin") return;
 	const appBundle = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
 	const target = path.join(appBundle, "Contents", "Resources", "icon.icns");

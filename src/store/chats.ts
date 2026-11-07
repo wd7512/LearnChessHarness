@@ -37,6 +37,7 @@ function chatFile(id: string): string {
 function createChat(title: string, kind?: "practice"): ChatRecord {
 	const now = new Date().toISOString();
 	const record: ChatRecord = {
+		subject: "chess",
 		id: `chat_${Date.now().toString(36)}_${crypto.randomUUID().slice(0, 8)}`,
 		title: title.trim() || "Untitled session",
 		createdAt: now,

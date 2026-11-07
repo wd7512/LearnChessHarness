@@ -28,6 +28,7 @@
  */
 
 import { Value } from "typebox/value";
+import { chessDiagramProblems } from "./chess-diagram.ts";
 import { parseChessQuestion, type ChessQuestion } from "./chess.ts";
 import type { TSchema } from "typebox";
 import { quizDisplayInputSchema, askInputSchema, askOptionProblems, quizInputProblems, explainInputProblems, explainDisplayInputSchema, type AskToolInput, type QuizToolInput, type ExplainToolInput } from "./question-core.ts";
@@ -98,6 +99,7 @@ export function parseAskInput(input: unknown): AskToolInput | undefined {
 	const cleaned = boundaryParse<AskToolInput>(askInputSchema, healEncodedArguments(input, askInputSchema));
 	if (!cleaned) return undefined;
 	if (askOptionProblems(cleaned.options ?? []).length > 0) return undefined;
+	if (chessDiagramProblems(cleaned).length > 0) return undefined;
 	return cleaned;
 }
 
