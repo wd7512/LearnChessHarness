@@ -8,6 +8,7 @@ import {
 	type ChessPracticeFeedback,
 	type ChessReviewScope,
 } from "../core/chess-workflows.ts";
+import { chessMistakeFindings, isDetectedChessMistake } from "../core/chess-findings.ts";
 import { ChessStore } from "../store/chess.ts";
 import { type ChessEngineProvider, StockfishUnavailable } from "./chess-engine.ts";
 
@@ -70,16 +71,22 @@ export class ChessMistakes {
 		if (status.state !== "ready") throw new StockfishUnavailable(status);
 		const state = this.store.read();
 		const allowed = new Set(
-			orderedChessGames(state.games, scope.speed, scope.limit).map((g) => g.id),
+			orderedChessGames(state.games, scope.speed, scope.limit, scope.opening).map((g) => g.id),
 		);
+		const findingState = scope.findingId ? state : { ...state, games: state.games.filter(g => allowed.has(g.id)), analyses: state.analyses.filter(a => allowed.has(a.gameId)) };
+		const findings = chessMistakeFindings(findingState);
+		const target = scope.findingId ? findings.repeated.find(f => f.id === scope.findingId) : undefined;
+		if (scope.findingId && !target) throw new Error("This repeated-position finding no longer has enough verified evidence. Review your games again.");
+		const rank = new Map(findings.repeated.map((f, i) => [chessPositionKey(f.fen) + ":" + f.move, i]));
+		const mateMistakes = new Set(findings.mistakes.filter(m=>m.forcedMate).map(m=>m.id));
 		const candidates = state.analyses
-			.filter((a) => a.status === "complete" && allowed.has(a.gameId))
+			.filter((a) => a.status === "complete" && (target ? target.examples.some(e => e.gameId === a.gameId) : allowed.has(a.gameId)))
 			.flatMap((a) =>
 				a.positions
-					.filter((p) => (p.lossCp ?? 0) >= 150)
+					.filter((p) => isDetectedChessMistake(p, state.games.find(g => g.id === a.gameId)!.learnerColor) && (!target || (chessPositionKey(p.before.fen) === chessPositionKey(target.fen) && state.games.find(g => g.id === a.gameId)!.moves[p.ply - 1] === target.move)))
 					.map((p) => ({ analysis: a, position: p })),
 			)
-			.sort((a, b) => (b.position.lossCp ?? 0) - (a.position.lossCp ?? 0));
+			.sort((a, b) => (rank.get(chessPositionKey(a.position.before.fen) + ":" + state.games.find(g=>g.id===a.analysis.gameId)!.moves[a.position.ply-1]) ?? 100000) - (rank.get(chessPositionKey(b.position.before.fen) + ":" + state.games.find(g=>g.id===b.analysis.gameId)!.moves[b.position.ply-1]) ?? 100000) || Number(mateMistakes.has(`${b.analysis.gameId}:${b.position.ply}`)) - Number(mateMistakes.has(`${a.analysis.gameId}:${a.position.ply}`)) || (b.position.lossCp ?? 0) - (a.position.lossCp ?? 0));
 		if (!candidates.length)
 			throw new Error(
 				"No verified critical positions are available in this scope yet. Review your games first, or choose a broader game type. A lack of detected mistakes is not a complete assessment.",
@@ -103,6 +110,7 @@ export class ChessMistakes {
 			id: randomUUID(),
 			createdAt: now,
 			updatedAt: now,
+			scope,
 			items: [],
 			attempts: [],
 		};
@@ -121,6 +129,7 @@ export class ChessMistakes {
 				kind: "personal-game",
 				gameId: game.id,
 				ply: c.position.ply,
+				findingId: target?.id ?? findings.repeated.find(f => f.examples.some(e => e.gameId === game.id && e.ply === c.position.ply))?.id,
 			});
 			const unseen = transfer.shift();
 			if (unseen)
@@ -131,7 +140,7 @@ export class ChessMistakes {
 					conceptId,
 					kind: "unseen",
 				});
-			if (session.items.filter((i) => i.kind === "personal-game").length === 4) break;
+			if (target || session.items.filter((i) => i.kind === "personal-game").length === 4) break;
 		}
 		this.store.update((s) => {
 			s.mistakeSessions ??= [];

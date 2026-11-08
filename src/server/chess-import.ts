@@ -1,3 +1,4 @@
+import { classifyChessOpening } from "../core/chess-openings.ts";
 import { createHash } from "node:crypto";
 import { Chess } from "chess.js";
 import type { ChessGame, ChessPlatform, ChessRating, ChessState } from "../core/chess.ts";
@@ -90,6 +91,7 @@ export function parseChessPgn(
 	const rating = (s?: string) => (s && /^\d+$/.test(s) ? Number(s) : undefined);
 	const positions = new Map(history.map((m, i) => [m.after, i + 1]));
 	return {
+		opening: classifyChessOpening({ initialFen, moves }),
 		id: platformGameId ? `${origin}:${platformGameId}` : fingerprint,
 		fingerprint,
 		platform: origin,

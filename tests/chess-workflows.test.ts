@@ -128,7 +128,7 @@ test("a scoped review analyzes a group, reports progress, aggregates evidence an
 		assert.equal(state.review!.completed, 3);
 		assert.equal(state.analyses.length, 3);
 		assert.deepEqual(state.games, original);
-		assert.equal(chessWeaknesses(state)[0]!.confidence, "tentative recurring pattern");
+		assert.equal(chessWeaknesses(state)[0]!.confidence, "insufficient evidence", "a repeated position must not imply a broader weakness");
 		const opened = f.opened();
 		await f.service.mutate({
 			action: "reviewStart",

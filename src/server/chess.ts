@@ -26,6 +26,7 @@ import {
 } from "./chess-engine.ts";
 import { analyzeStoredChessGame, ChessReviewer } from "./chess-review.ts";
 import { ChessMistakes } from "./chess-mistakes.ts";
+import { chessMistakeFindings } from "../core/chess-findings.ts";
 import { reviewChessState } from "../core/chess-workflows.ts";
 import { subscriptionRequestOrigin } from "./web-subscription-http.ts";
 import { type LhMessage } from "../core/native-messages.ts";
@@ -37,12 +38,18 @@ const bodySchema = z.discriminatedUnion("action", [
 		speed: z.string().max(30),
 		limit: z.number().int().min(1).max(100),
 		reanalyze: z.boolean().optional(),
+		opening: z.string().max(150).optional(),
+		learnerColor: z.enum(["white", "black"]).optional(),
+		mode: z.literal("opening-survey").optional(),
+		positionsPerGame: z.number().int().min(1).max(4).optional(),
 	}),
 	z.object({ action: z.literal("reviewCancel") }),
 	z.object({
 		action: z.literal("mistakeStart"),
 		speed: z.string().max(30),
 		limit: z.number().int().min(1).max(100),
+		findingId: z.string().max(250).optional(),
+		opening: z.string().max(150).optional(),
 	}),
 	z.object({
 		action: z.literal("mistakeAnswer"),
@@ -103,11 +110,14 @@ export class ChessService {
 		this.mistakes = new ChessMistakes(store, engineRuntime);
 	}
 	snapshot() {
+		this.store.backfillOpenings();
 		this.reviewer.recover();
 		const state = this.store.read();
 		return {
 			...state,
 			weaknesses: chessWeaknesses(state),
+			mistakeFindings: chessMistakeFindings(state),
+			scopedMistakes: state.review ? chessMistakeFindings(reviewChessState(state)) : null,
 			concepts: CHESS_CONCEPTS,
 			openings: CHESS_OPENINGS,
 			reviewFindings: state.review ? chessWeaknesses(reviewChessState(state)) : [],

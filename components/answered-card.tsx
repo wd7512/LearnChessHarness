@@ -27,8 +27,17 @@ export function AnsweredCard({ answer: savedAnswer, input }: { answer: QuestionA
 	const answer = answerForPresentation(savedAnswer, input);
 	const [whyOpen, setWhyOpen] = useState(false); // the tucked explanation (predictions, owner 2026-10-03)
 	if (answer.kind === "chessboard" && !answer.dismissed) return (
-			<div data-testid="answered-chess-card" className="space-y-2 rounded-xl border bg-card p-4 text-sm"><strong>{answer.questionText}</strong><p>{answer.chess?.uciMoves.join(" → ")}</p><p>{answer.chessGrade?.moveGrade === "matches-lesson" ? "Moves match the lesson rubric." : "Legal continuation outside the lesson rubric."}</p><p className="text-muted-foreground">Explanation: awaiting tutor review. Verification: rules and lesson rubric.</p>{answer.chess?.reasoning && <p>{answer.chess.reasoning}</p>}</div>
-		);
+		<div data-testid="answered-card" className="rounded-xl border bg-card p-4 text-card-foreground [&>*:last-child]:mb-0">
+			<div data-testid="answered-chess-card" className="space-y-3">
+				<p className="font-medium">{answer.questionText}</p>
+				<p className="text-sm">{answer.chess?.uciMoves.join(" → ")}</p>
+				<p className="text-sm text-muted-foreground">{answer.chessGrade?.moveGrade === "matches-lesson" ? "Moves match the lesson rubric." : "Legal continuation outside the lesson rubric."} Your tutor will review the reasoning.</p>
+				{answer.chess?.confidence !== undefined && <div className="flex items-center gap-3 border-t pt-3 text-xs text-muted-foreground"><span>Confidence</span><ConfidenceRail value={answer.chess.confidence} /><span>{answer.chess.confidence}%</span></div>}
+				{answer.chess?.reasoning && <ThinkingBlock label="YOUR THINKING" text={answer.chess.reasoning} defaultOpen />}
+			</div>
+		</div>
+	);
+
 	if (answer.dismissed) {
 		return (
 			<div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">

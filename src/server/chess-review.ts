@@ -1,3 +1,4 @@
+import { matchesChessOpening, selectOpeningSurveyPlies } from "../core/chess-openings.ts";
 import { randomUUID } from "node:crypto";
 import { orderedChessGames, type ChessReviewScope } from "../core/chess-workflows.ts";
 import { analyzeChessGame } from "../agent/chess-engine.ts";
@@ -8,13 +9,15 @@ export async function analyzeStoredChessGame(
 	store: ChessStore,
 	runtime: ChessEngineProvider,
 	gameId: string,
+	scope?: import("../core/chess-workflows.ts").ChessReviewScope,
 ) {
 	const game = store.read().games.find((g) => g.id === gameId);
 	if (!game) throw new Error("This imported game no longer exists.");
 	if (game.moves.length > 600) throw new Error("This game exceeds the 600-ply analysis limit.");
 	const engine = await runtime.open();
 	try {
-		const analysis = await analyzeChessGame(game, engine);
+		const sampled = scope?.mode === "opening-survey" ? selectOpeningSurveyPlies(game, scope.opening ?? "", scope.positionsPerGame ?? 4) : undefined;
+		const analysis = await analyzeChessGame(game, engine, { depth: 12, nodes: 100_000 }, sampled);
 		store.update((s) => {
 			if (!s.games.some((g) => g.id === gameId))
 				throw new Error("The game was cleared during analysis.");
@@ -53,7 +56,7 @@ export class ChessReviewer {
 		try {
 			const status = await this.runtime.status();
 			if (status.state !== "ready") throw new StockfishUnavailable(status);
-			const games = orderedChessGames(this.store.read().games, scope.speed, scope.limit);
+			const games = orderedChessGames(this.store.read().games.filter(g => matchesChessOpening(g, scope.opening) && (!scope.learnerColor || scope.learnerColor === g.learnerColor)), scope.speed, scope.limit);
 			if (!games.length)
 				throw new Error(
 					"No imported games match this scope. Choose another game type or import games first.",
@@ -102,8 +105,9 @@ export class ChessReviewer {
 					.read()
 					.analyses.find((a) => a.gameId === gameId && a.status === "complete");
 				try {
-					const reused = !!saved && !job.scope.reanalyze;
-					if (!reused) await analyzeStoredChessGame(this.store, this.runtime, gameId);
+					const game = this.store.read().games.find(g=>g.id===gameId)!;
+					const reused = !!saved && !job.scope.reanalyze && (job.scope.mode === "opening-survey" ? selectOpeningSurveyPlies(game, job.scope.opening ?? "", job.scope.positionsPerGame ?? 4).every(ply=>saved.positions.some(p=>p.ply===ply)) : !saved.coverage);
+					if (!reused) await analyzeStoredChessGame(this.store, this.runtime, gameId, job.scope);
 					this.store.update((s) => {
 						if (s.review?.id === id) {
 							s.review.completed++;
@@ -129,7 +133,7 @@ export class ChessReviewer {
 					delete r.currentGameId;
 					r.message = r.failures.length
 						? `${r.completed} of ${r.gameIds.length} games reviewed. ${r.failures[0]!.message}`
-						: `${r.completed} games reviewed, including ${r.reused} saved analyses. Findings cover the piece-safety detector only.`;
+						: `${r.completed} games reviewed, including ${r.reused} saved analyses. Repeated-position fixes come first; other categories are shown only where board evidence supports them.`;
 				}
 			});
 		} catch (e) {

@@ -151,9 +151,10 @@ export function ChessMistakePractice({
 								: "Separate transfer position · first attempt tracked"}
 						</p>
 						<h3 className="mt-3 text-lg">Find a better continuation</h3>
+					{session.scope?.opening && <p className="mt-2 text-xs text-muted-foreground">Opening scope: {session.scope.opening}</p>}
 						<p className="mt-2 text-xs leading-6 text-muted-foreground">{question.objective}</p>
 					</div>
-					<ChessBoard
+					<ChessBoard voice
 						key={`${session.id}:${item.id}:${attempt}`}
 						question={question}
 						draftKey={`mistake:${session.id}:${item.id}:${attempt}`}

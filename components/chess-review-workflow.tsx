@@ -1,4 +1,7 @@
 "use client";
+import { useState } from "react";
+import { ChessOpeningScope } from "@/components/chess-opening-scope";
+import { ChessFindings } from "@/components/chess-findings";
 import { Button } from "@/components/ui/button";
 import {
 	CHESS_CONCEPTS,
@@ -7,6 +10,7 @@ import {
 	type ChessPracticeItem,
 	type ChessPracticeFeedback,
 	type chessWeaknesses,
+	type chessMistakeFindings,
 } from "@/src/core";
 
 export const GAME_TYPES = [
@@ -25,7 +29,9 @@ export interface ChessMutation {
 export function ChessReviewWorkflow({
 	state,
 	findings,
+	mistakes,
 	speed,
+	opening, setOpening,
 	setSpeed,
 	limit,
 	setLimit,
@@ -38,7 +44,9 @@ export function ChessReviewWorkflow({
 }: {
 	state: ChessState;
 	findings: ReturnType<typeof chessWeaknesses>;
+	mistakes?: ReturnType<typeof chessMistakeFindings>;
 	speed: string;
+	opening: string; setOpening: (opening: string) => void;
 	setSpeed: (s: string) => void;
 	limit: number;
 	setLimit: (n: number) => void;
@@ -47,9 +55,13 @@ export function ChessReviewWorkflow({
 	mutate: ChessMutation;
 	onGame: (id: string, ply?: number) => void;
 	onLesson: (card: ChessConceptCard, context?: string) => void;
-	onPractice: () => void;
+	onPractice: (findingId?: string) => void;
 }) {
+	const [scopeEvidence, setScopeEvidence] = useState<any>();
+	const currentEvidence = scopeEvidence?.receipt.openingRequested === opening && scopeEvidence?.receipt.timeControl === speed && scopeEvidence?.survey.requestedLimit === limit ? scopeEvidence : undefined;
+	const effectiveMistakes = opening ? currentEvidence?.survey.ready ? currentEvidence.survey.findings : undefined : mistakes;
 	const job = state.review;
+	const matchingJob = !!job && (job.scope.opening ?? "") === opening && job.scope.speed === speed && job.scope.limit === limit;
 	const running = job?.status === "running";
 	return (
 		<section
@@ -62,13 +74,12 @@ export function ChessReviewWorkflow({
 				</p>
 				<h3 className="font-serif text-2xl">Find areas to improve</h3>
 				<p className="mt-2 text-xs leading-6 text-muted-foreground">
-					Review a group of games, look for repeated evidence, and choose a useful lesson. The
-					current concept detector covers <strong>piece safety</strong>: attacked, undefended
-					non-pawn pieces with engine-verified loss. It is not a comprehensive assessment of your
-					chess strengths and weaknesses.
+					Start with repeated poor moves in the same position, then investigate broader themes.
+					Categories describe material loss, undefended pieces, unanswered threats, forks and mating results where the board and verified line support them. Other mistakes need review; this is not a comprehensive assessment or a diagnosis of why you played a move.
 				</p>
 			</div>
 			<div className="flex flex-wrap items-end gap-4">
+				<label className="text-xs">Opening<input aria-label="Opening scope" list="opening-names" placeholder="All openings" value={opening} onChange={e => setOpening(e.target.value)} className="mt-2 block w-52 rounded-lg border bg-background p-2.5" /><datalist id="opening-names">{[...new Set(state.games.flatMap(g => g.opening?.status === "matched" ? [g.opening.name.split(":")[0]!] : []))].map(name => <option key={name} value={name} />)}</datalist></label>
 				<label className="text-xs">
 					Game type
 					<select
@@ -92,7 +103,7 @@ export function ChessReviewWorkflow({
 						onChange={(e) => setLimit(Number(e.target.value))}
 						className="mt-2 block rounded-lg border bg-background p-2.5"
 					>
-						{[10, 25, 50, 100].map((n) => (
+						{[...new Set([10, 25, 50, 100, limit])].sort((a,b)=>a-b).map((n) => (
 							<option key={n} value={n}>
 								Most recent {n}
 							</option>
@@ -102,7 +113,7 @@ export function ChessReviewWorkflow({
 				<Button
 					disabled={!available || busy || !!running || !state.games.length}
 					onClick={() =>
-						void mutate({ action: "reviewStart", speed, limit }, "Starting game review…")
+						void mutate({ action: "reviewStart", speed, limit, opening: opening || undefined, mode: opening ? "opening-survey" : undefined, positionsPerGame: opening ? 4 : undefined }, "Starting game review…")
 					}
 				>
 					Review my games
@@ -118,12 +129,13 @@ export function ChessReviewWorkflow({
 					</Button>
 				)}
 			</div>
-			{job && (
+			{opening && <ChessOpeningScope opening={opening} speed={speed} limit={limit} revision={job?.completed ?? 0} onGame={onGame} onScope={setScopeEvidence} />}
+			{job && (matchingJob || running) && (
 				<div role="status" aria-live="polite" className="space-y-3 rounded-lg border p-4 text-xs">
 					<p>
 						{job.status === "running" ? "Reviewing games…" : `Review ${job.status}`} ·{" "}
 						{job.completed} / {job.gameIds.length} games ·{" "}
-						{job.scope.speed === "all" ? "all game types" : job.scope.speed}
+						{job.scope.speed === "all" ? "all game types" : job.scope.speed} · {job.scope.opening || "all openings"}
 					</p>
 					<progress
 						aria-label="Game review progress"
@@ -142,7 +154,8 @@ export function ChessReviewWorkflow({
 					))}
 				</div>
 			)}
-			{job && job.completed > 0 && (
+			{effectiveMistakes && (opening || (matchingJob && job && job.completed > 0)) && <ChessFindings findings={effectiveMistakes} available={available} busy={busy || !!running} onPractice={onPractice} onGame={onGame} onLesson={(id, context) => onLesson(CHESS_CONCEPTS.find(c => c.concept_id === id) ?? CHESS_CONCEPTS.find(c => c.concept_id === "calculation")!, context)} />}
+			{matchingJob && job && job.completed > 0 && (
 				<div className="space-y-5">
 					<h4 className="text-sm font-medium">Areas worth investigating</h4>
 					{!findings.length ? (
@@ -189,7 +202,7 @@ export function ChessReviewWorkflow({
 							</article>
 						))
 					)}
-					<Button variant="outline" disabled={!available || busy || !!running} onClick={onPractice}>
+					<Button variant="outline" disabled={!available || busy || !!running} onClick={() => onPractice()}>
 						Practise my mistakes
 					</Button>
 				</div>

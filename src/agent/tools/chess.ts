@@ -1,6 +1,7 @@
 import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { chessQuestionProblems, chessQuestionSchema } from "../../core/chess.ts";
+import { openingReferenceCard, openingReferences } from "../../core/chess-openings.ts";
 import { CHESS_CONCEPTS, CHESS_OPENINGS } from "../../core/chess-curriculum.ts";
 import { invalidInputResult, questionResult } from "../tool-execute.ts";
 import { Chess } from "chess.js";
@@ -34,7 +35,7 @@ export const chessReferenceTool: AgentTool<typeof referenceSchema> = {
 		const cards = CHESS_CONCEPTS.filter(
 			(c) => !term || `${c.concept_id} ${c.title} ${c.principle}`.toLowerCase().includes(term),
 		);
-		const openings = CHESS_OPENINGS.filter((o) => !term || `${o.eco} ${o.name}`.toLowerCase().includes(term));
+		const openings = term ? openingReferences(query).slice(0, 25).map(o => ({ ...o, source: "CC0 Lichess opening catalogue; rule-checked, not engine evaluated" })) : CHESS_OPENINGS;
 		return {
 			content: [
 				{
@@ -42,6 +43,7 @@ export const chessReferenceTool: AgentTool<typeof referenceSchema> = {
 					text: JSON.stringify({
 						cards,
 						openings,
+						openingCard: term ? openingReferenceCard(query) : null,
 						authority:
 							"Rules: chess.js. Concepts: editorial principles. Opening names: CC0 Lichess examples. Engine analysis must come from recorded Stockfish output.",
 					}),
@@ -132,10 +134,19 @@ export const chessAnalyzeTool = createChessAnalyzeTool();
 const historySchema = Type.Object({
 	view: Type.Union([
 		Type.Literal("summary"),
+		Type.Literal("list"),
+		Type.Literal("scope"),
 		Type.Literal("game"),
 		Type.Literal("position"),
 		Type.Literal("practice"),
 	]),
+	opening: Type.Optional(Type.String()),
+	speed: Type.Optional(Type.String()),
+	learnerColor: Type.Optional(Type.Union([Type.Literal("white"), Type.Literal("black")])),
+	page: Type.Optional(Type.Integer({ minimum: 1 })),
+	pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+	limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+	survey: Type.Optional(Type.Boolean({ description: "With scope and an opening, start a bounded corpus survey before probing. Progress is available in Games; re-read scope to check readiness." })),
 	gameId: Type.Optional(Type.String()),
 	ply: Type.Optional(Type.Integer({ minimum: 1 })),
 });
@@ -145,7 +156,7 @@ export function createChessHistoryTool(read?: ChessHistoryReader): AgentTool<typ
 		label: "chess_history",
 		parameters: historySchema,
 		description:
-			"Read the learner's connected public chess accounts, imported games, actual completed Stockfish analyses, evidence-backed recurring patterns and prior chess practice. Call summary FIRST, then game/position/practice only as needed using returned game IDs. This chess history is separate from the general learning graph. An empty graph does not imply no chess games. Retrieval failures are unavailable data access, never evidence of an empty history. Do not ask for PGNs that are already imported.",
+			"Read the learner's connected public chess accounts, imported games, actual completed Stockfish analyses, evidence-backed recurring patterns and prior chess practice. Call summary FIRST. For an opening, scope returns a scope receipt, branch histogram, paginated matching games and a sourced reference card; survey=true starts bounded analysis. list enumerates ALL matching games using opening/speed/learnerColor filters and page/pageSize. Then load game/position/practice only as needed. Classify, survey the corpus, then probe into the branches with evidence; never substitute five recent IDs for an opening scope. This chess history is separate from the general learning graph. An empty graph does not imply no chess games. Retrieval failures are unavailable data access, never evidence of an empty history. Do not ask for PGNs that are already imported.",
 		execute: async (_id, input) => {
 			try {
 				if (!read) throw new Error("Chess history access was not connected for this agent.");
@@ -172,4 +183,17 @@ export function createChessHistoryTool(read?: ChessHistoryReader): AgentTool<typ
 			}
 		},
 	};
+}
+
+/** History-based opening study cannot pose or conclude assessment before the corpus is surveyed. */
+export function guardChessEvidence(registry: Record<string, AgentTool<any>>, gate?: () => Promise<string | undefined>) {
+	if (!gate) return registry;
+	return Object.fromEntries(Object.entries(registry).map(([name, tool]) => {
+		if (!["probe", "recall", "quiz", "explain", "chessboard", "problem", "probe_done"].includes(name) && !name.startsWith("plan_")) return [name, tool];
+		return [name, { ...tool, execute: async (...args: Parameters<typeof tool.execute>) => {
+			let problem: string | undefined;
+			try { problem = await gate(); } catch { problem = "The opening corpus evidence could not be retrieved. This is an access failure, not an empty history. Retry chess_history before assessing or planning."; }
+			return problem ? invalidInputResult(name, [problem]) : tool.execute(...args);
+		} }];
+	}));
 }

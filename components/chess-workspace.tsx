@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { SidebarToggle } from "@/components/sidebar";
 import {
 	ArrowRightIcon,
+	HouseIcon,
 	BookOpenIcon,
 	ChartNoAxesCombinedIcon,
 	CheckIcon,
@@ -31,6 +33,7 @@ import {
 	chessWeaknesses,
 	orderedChessGames,
 	mistakePracticeStats,
+	chessMistakeFindings,
 	type ChessAnswer,
 	type ChessConceptCard,
 	type ChessQuestion,
@@ -39,8 +42,10 @@ import {
 
 type Snapshot = ChessState & { weaknesses: ReturnType<typeof chessWeaknesses>; warnings?: string[];
 	reviewFindings?: ReturnType<typeof chessWeaknesses>;
+	mistakeFindings?: ReturnType<typeof chessMistakeFindings>;
+	scopedMistakes?: ReturnType<typeof chessMistakeFindings> | null;
 };
-type Tab = "Learn" | "Games" | "Practise" | "Progress" | "Connections";
+type Tab = "Home" | "Study" | "Games" | "Practise" | "Progress" | "Connections";
 const empty: Snapshot = {
 	version: 1,
 	games: [],
@@ -64,7 +69,7 @@ const stamp = (s?: string | null) =>
 
 export function ChessWorkspace() {
 	const [state, setState] = useState<Snapshot>(empty);
-	const [tab, setTab] = useState<Tab>("Learn");
+	const [tab, setTab] = useState<Tab>("Home");
 	const [busy, setBusy] = useState("");
 	const [notice, setNotice] = useState("");
 	const [failure, setFailure] = useState("");
@@ -89,22 +94,29 @@ export function ChessWorkspace() {
 	const [selectedPly, setSelectedPly] = useState<number | null>(null);
 	const autoStarted = useRef(false);
 	const [gameType, setGameType] = useState("all");
+	const [openingFilter, setOpeningFilter] = useState("");
 	const [reviewLimit, setReviewLimit] = useState(10);
 	const [practiceSessionId, setPracticeSessionId] = useState<string>();
 	const reviewRef = useRef<HTMLElement>(null);
 	const engine = useStockfishStatus();
-	const displayedGames = orderedChessGames(state.games, gameType);
+	useEffect(() => { const home = () => setTab("Home"); window.addEventListener("lh:chess-home", home); return () => window.removeEventListener("lh:chess-home", home); }, []);
+	const displayedGames = orderedChessGames(state.games, gameType, Number.MAX_SAFE_INTEGER, openingFilter);
 	useEffect(() => {
 		const params = new URLSearchParams(window.location.search);
 		const value = params.get("tab");
 		const tabs = {
 			games: "Games",
 			practice: "Practise",
-			learn: "Learn",
+			home: "Home",
+			learn: "Study",
+			study: "Study",
 			progress: "Progress",
 			connections: "Connections",
 		} as const;
 		if (value && value in tabs) setTab(tabs[value as keyof typeof tabs]);
+		if (params.get("speed")) setGameType(params.get("speed")!);
+		if (params.get("limit") && Number(params.get("limit")) >= 1 && Number(params.get("limit")) <= 100) setReviewLimit(Number(params.get("limit")));
+		if (params.get("opening")) setOpeningFilter(params.get("opening")!);
 		if (params.get("gameId")) setSelectedGame(params.get("gameId"));
 	}, []);
 	useEffect(() => {
@@ -181,9 +193,9 @@ export function ChessWorkspace() {
 		}, 1200);
 		return () => clearInterval(timer);
 	}, [state.review?.status, state.review?.id, refresh]);
-	async function startMistakes() {
+	async function startMistakes(findingId?: string, allHistory = false) {
 		const result = await mutate(
-			{ action: "mistakeStart", speed: gameType, limit: reviewLimit },
+			{ action: "mistakeStart", speed: allHistory ? "all" : gameType, limit: allHistory ? 100 : reviewLimit, opening: allHistory ? undefined : openingFilter || undefined, findingId },
 			"Preparing mistake practice…",
 		);
 		if (result) {
@@ -232,27 +244,12 @@ export function ChessWorkspace() {
 	return (
 		<main className="h-dvh overflow-y-auto bg-background text-foreground" data-testid="chess-workspace">
 			<div className="mx-auto max-w-6xl px-5 py-8 md:px-10 md:py-12">
-				<div className="mb-9 flex items-start justify-between gap-4">
-					<div>
-						<Link href="/" className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground">
-							<ChevronLeftIcon className="size-3" /> LearnHarness
-						</Link>
-						<p className="mb-2 text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
-							A little study. A better next game.
-						</p>
-						<h1 className="font-serif text-4xl tracking-tight md:text-5xl">Your chess, understood.</h1>
-						<p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-							Learn the idea. Play the position. Look for it in your next game.
-						</p>
-					</div>
-					<span aria-hidden className="hidden text-6xl text-[#a1ac8b] sm:block">
-						♞
-					</span>
-				</div>
-			<nav aria-label="Chess sections" className="mb-8 grid grid-cols-2 gap-1 border-b sm:flex">
+				<header className="mb-5"><div className="mb-2"><SidebarToggle /></div><p className="mb-2 text-xs text-muted-foreground">Chess learning</p><h1 className="font-serif text-3xl sm:text-4xl">{tab === "Home" ? "Home" : tab === "Study" ? "Study a chess idea" : tab}</h1></header>
+			<nav aria-label="Chess sections" className="mb-6 flex gap-1 overflow-x-auto border-b">
 					{(
 						[
-							["Learn", BookOpenIcon],
+							["Home", HouseIcon],
+							["Study", BookOpenIcon],
 							["Games", DownloadIcon],
 							["Practise", BookOpenIcon],
 							["Progress", ChartNoAxesCombinedIcon],
@@ -264,7 +261,7 @@ export function ChessWorkspace() {
 							type="button"
 							onClick={() => setTab(name)}
 							aria-current={tab === name ? "page" : undefined}
-							className={`flex items-center gap-2 border-b-2 px-3 py-3 text-xs transition-colors ${tab === name ? "border-[#a1ac8b] text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+							className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-xs transition-colors ${tab === name ? "border-[#a1ac8b] text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
 						>
 							<Icon className="size-3.5" />
 							{name}
@@ -287,14 +284,14 @@ export function ChessWorkspace() {
 						{failure}
 					</p>
 				)}
-				{tab === "Learn" && (
-					<>
+				{tab === "Home" && (
 						<ChessHistoryStart
 							state={state}
 							available={engine.available}
 							busy={!!busy}
 							onReview={() => setTab("Games")}
-							onPractice={() => void startMistakes()}
+							onPractice={findingId => void startMistakes(findingId, true)}
+							onExplore={() => setTab("Study")}
 							onLesson={(c, context) => void startLesson(c, context)}
 							onFreeText={async (text) => {
 								setBusy("Opening chess session…");
@@ -313,6 +310,10 @@ export function ChessWorkspace() {
 								}
 							}}
 						/>
+				)}
+				{tab === "Study" && (
+					<>
+
 						<div className="grid gap-8 lg:grid-cols-[1fr_1.05fr]">
 							<div>
 								<p className="mb-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
@@ -431,7 +432,7 @@ export function ChessWorkspace() {
 									</span>
 								</div>
 								<p className="mb-5 text-xs leading-6">{question.objective}</p>
-								<ChessBoard
+								<ChessBoard voice
 									key={JSON.stringify(question)}
 									question={question}
 									draftKey="curriculum-preview"
@@ -486,7 +487,9 @@ export function ChessWorkspace() {
 						<ChessReviewWorkflow
 							state={state}
 							findings={state.reviewFindings ?? []}
+							mistakes={state.scopedMistakes ?? undefined}
 							speed={gameType}
+							opening={openingFilter} setOpening={setOpeningFilter}
 							setSpeed={setGameType}
 							limit={reviewLimit}
 							setLimit={setReviewLimit}
@@ -495,7 +498,7 @@ export function ChessWorkspace() {
 							mutate={mutate}
 							onGame={showGame}
 							onLesson={(c, context) => void startLesson(c, context)}
-							onPractice={() => void startMistakes()}
+							onPractice={findingId => void startMistakes(findingId)}
 						/>
 						<div className="rounded-xl border bg-card p-5">
 							<div className="grid gap-4 md:grid-cols-2">
@@ -605,7 +608,7 @@ export function ChessWorkspace() {
 								)}
 								{analysis && (
 									<p className="my-4 text-xs leading-6 text-muted-foreground">
-										{analysis.status} · {analysis.engine} · maximum depth {analysis.settings.depth}{" "}
+										{analysis.coverage ? `Opening survey · ${analysis.positions.length} sampled positions / ${analysis.coverage.totalLearnerPositions} learner positions` : analysis.status} · {analysis.engine} · maximum depth {analysis.settings.depth}{" "}
 										/ {analysis.settings.nodes.toLocaleString()} nodes per search. {" "}
 										{analysis.status !== "complete"
 											? "No completed analysis is available for this game. Check engine status above before retrying."
@@ -614,7 +617,7 @@ export function ChessWorkspace() {
 								)}
 								<div className="flex gap-5 overflow-x-auto pb-3">
 									{analysis?.positions
-										.filter((p) => p.ply === selectedPly || (p.lossCp !== null && p.lossCp >= 150))
+										.filter((p) => p.ply === selectedPly || state.mistakeFindings?.mistakes.some(m => m.gameId === selected.id && m.ply === p.ply))
 										.sort((a, b) => a.ply === selectedPly ? -1 : b.ply === selectedPly ? 1 : a.ply - b.ply)
 										.slice(0, 12)
 										.map((p) => (
@@ -624,7 +627,7 @@ export function ChessWorkspace() {
 													Ply {p.ply} · {p.lossCp} cp loss
 												</p>
 												<p className="mt-1 max-w-48 text-[10px] text-muted-foreground">
-													Critical moment; conceptual meaning needs testing.
+													{state.mistakeFindings?.mistakes.find(m => m.gameId === selected.id && m.ply === p.ply)?.categories.map(c => c.label).join(" · ") || "Uncategorised / needs review"}. Cause needs a tutor probe.
 												</p>
 												<Button
 													variant="link"
@@ -711,6 +714,7 @@ export function ChessWorkspace() {
 													<br />
 													{g.black.name}{" "}
 													<span className="text-muted-foreground">{g.black.rating ?? ""}</span>
+													<span className="mt-1 block max-w-64 text-[10px] leading-4 text-muted-foreground">{g.opening?.eco ? `${g.opening.eco} · ` : ""}{g.opening?.name ?? "Opening classification pending"}</span>
 												</td>
 												<td className="hidden p-4 leading-6 sm:table-cell">
 													{g.result}
@@ -767,6 +771,7 @@ export function ChessWorkspace() {
 					<div className="space-y-7">
 						<div>
 							<h2 className="font-serif text-3xl">Evidence, over time.</h2>
+							<Link href="/learning-map" className="text-xs underline">Open learning map</Link>
 							<p className="mt-2 text-xs text-muted-foreground">
 								Look for transfer in new games and unseen positions. A rating change alone cannot tell you
 								why.

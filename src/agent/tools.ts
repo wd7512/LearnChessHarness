@@ -1,3 +1,4 @@
+import { guardChessEvidence } from "./tools/chess.ts";
 import { Type } from "typebox";
 import { chessDiagramProblems } from "../core/chess-diagram.ts";
 import {
@@ -281,6 +282,7 @@ export const probeExplainTool: AgentTool<typeof explainInputBase> = {
 export interface ProberToolContext extends ProbeDoneContext {
 	chessEngine?: () => Promise<ChessEngine>;
 	chessHistory?: ChessHistoryReader;
+	chessEvidence?: () => Promise<string | undefined>;
 	/** Creates the job record (deduped by toolCallId). */
 	jobStore: JobStore;
 	/** Fire the background runner for a freshly created job. */
@@ -333,7 +335,7 @@ export function createProberTools(
 	// healToolRecord (owner, 2026-10-09 — the whitehead generalization):
 	// the standard argument heal over the WHOLE registry — every tool,
 	// not just the one the latest wobble incident landed on.
-	return healToolRecord({
+	const registry = healToolRecord({
 		...filterEnabledTools(
 			{
 				...quizzing,
@@ -368,6 +370,7 @@ export function createProberTools(
 			),
 			...done,
 		});
+	return guardChessEvidence(registry, ctx.chessEvidence);
 }
 
 // ─── the teacher's question tools (quiz carries the position field) ──────────
@@ -416,6 +419,7 @@ export function teachQuizToolFor(ctx: Pick<PlanToolContext, "chatId" | "chatStor
 export interface TeacherToolContext extends PlanToolContext {
 	chessEngine?: () => Promise<ChessEngine>;
 	chessHistory?: ChessHistoryReader;
+	chessEvidence?: () => Promise<string | undefined>;
 	/** Job-tool wiring (sub-agent dispatch): the job store + the runner's
 	 *  spawn seam. The composition root injects both. */
 	jobStore: JobStore;
@@ -476,7 +480,7 @@ export function createTeacherTools(
 			? { quiz: teachQuizToolFor(ctx), explain: teachExplainToolFor(ctx) }
 			: mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
 	// healToolRecord — same standard as the prober's registry (above).
-	return healToolRecord(
+	const registry = healToolRecord(
 		filterEnabledTools(
 			{
 			...quizzing,
@@ -502,4 +506,5 @@ export function createTeacherTools(
 		withoutMechanics(enabled),
 		),
 	);
+	return guardChessEvidence(registry, ctx.chessEvidence);
 }

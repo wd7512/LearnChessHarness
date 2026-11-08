@@ -145,7 +145,7 @@ try {
 	await page.waitForFunction(() =>
 		document
 			.querySelector('[data-testid="chess-review-workflow"]')
-			.textContent.includes("tentative recurring pattern"),
+			.textContent.includes("First fixes: repeated moves"),
 	);
 	await page.$eval('[data-testid="chess-review-workflow"]', (e) =>
 		e.scrollIntoView({ block: "start" }),
@@ -174,7 +174,7 @@ try {
 	await page.click(`[data-square="${move.slice(2, 4)}"]`);
 	if (move[4]) await button({ q: "queen", r: "rook", b: "bishop", n: "knight" }[move[4]]);
 	await page.type(
-		'[aria-label="Your explanation"]',
+		'[aria-label="Your thinking"]',
 		"I checked the forcing reply and chose a continuation that accounts for the threat.",
 	);
 	await button("Check continuation");
@@ -187,7 +187,7 @@ try {
 	await shot("07-verified-practice-feedback");
 	await button("Retry position");
 	assert.equal(await page.$('[data-testid="mistake-feedback"]'), null);
-	await tab("Learn");
+	await tab("Home");
 	await page.waitForFunction(() =>
 		document
 			.querySelector('[data-testid="chess-history-start"]')

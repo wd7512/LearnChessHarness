@@ -1,3 +1,4 @@
+import { matchesChessOpening } from "./chess-openings.ts";
 import type { ChessEvaluation, ChessGame, ChessState } from "./chess.ts";
 
 export interface StockfishStatus {
@@ -10,7 +11,8 @@ export interface StockfishStatus {
 	setupUrl: "/chess/setup";
 }
 export interface ChessHistoryQuery {
-	view: "summary" | "game" | "position" | "practice";
+	view: "summary" | "list" | "scope" | "game" | "position" | "practice";
+	opening?: string; speed?: string; learnerColor?: "white" | "black"; page?: number; pageSize?: number; limit?: number; survey?: boolean;
 	gameId?: string;
 	ply?: number;
 }
@@ -19,6 +21,8 @@ export interface ChessReviewScope {
 	speed: string;
 	limit: number;
 	reanalyze?: boolean;
+	findingId?: string;
+	opening?: string; learnerColor?: "white" | "black"; mode?: "opening-survey"; positionsPerGame?: number;
 }
 export interface ChessReviewProgress {
 	id: string;
@@ -41,6 +45,7 @@ export interface ChessPracticeItem {
 	kind: "personal-game" | "unseen";
 	gameId?: string;
 	ply?: number;
+	findingId?: string;
 }
 export interface ChessPracticeFeedback {
 	move: string;
@@ -63,6 +68,7 @@ export interface ChessPracticeFeedback {
 	reasoning?: string;
 }
 export interface ChessMistakeSession {
+	scope?: ChessReviewScope;
 	id: string;
 	createdAt: string;
 	updatedAt: string;
@@ -77,6 +83,7 @@ export function orderedChessGames(
 	games: readonly ChessGame[],
 	speed = "all",
 	limit = Number.MAX_SAFE_INTEGER,
+	opening?: string,
 ) {
 	const date = (g: ChessGame) => {
 		const n = Date.parse(g.playedAt ?? "");
@@ -85,7 +92,7 @@ export function orderedChessGames(
 	return games
 		.filter(
 			(g) =>
-				speed === "all" || g.speed === speed || (speed === "daily" && g.speed === "correspondence"),
+				(speed === "all" || g.speed === speed || (speed === "daily" && g.speed === "correspondence")) && matchesChessOpening(g, opening),
 		)
 		.sort((a, b) => date(b) - date(a) || a.id.localeCompare(b.id))
 		.slice(0, limit);

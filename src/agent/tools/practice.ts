@@ -17,7 +17,7 @@
 import { Type, type Static } from "typebox";
 import { chessQuestionProblems, chessQuestionSchema } from "../../core/chess.ts";
 import { chessDiagramProblems, chessDiagramSchema } from "../../core/chess-diagram.ts";
-import { createChessAnalyzeTool, createChessHistoryTool, chessReferenceTool } from "./chess.ts";
+import { createChessAnalyzeTool, createChessHistoryTool, chessReferenceTool, guardChessEvidence } from "./chess.ts";
 import type { ChessEngine } from "../chess-engine.ts";
 import type { ChessHistoryReader } from "../../core/chess-workflows.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
@@ -38,6 +38,7 @@ import { healEncodedArguments, healToolRecord } from "./heal.ts";
 export interface PracticeToolContext {
 	chessEngine?: () => Promise<ChessEngine>;
 	chessHistory?: ChessHistoryReader;
+	chessEvidence?: () => Promise<string | undefined>;
 	chatId: string;
 	chatStore: { getChat(id: string): { messages: LhMessage[]; kind?: string } | null;
 	};
@@ -251,7 +252,7 @@ export function practiceTools(ctx: PracticeToolContext): Record<string, AgentToo
 	// the standard argument heal over the WHOLE registry. problem/conclude
 	// keep their own (target-normalizing) prepareArguments as the composed
 	// inner pass; the double heal is idempotent by construction.
-	return healToolRecord({
+	const registry = healToolRecord({
 		problem: problemTool(gate, ctx.graphNodes),
 		chess_reference: chessReferenceTool,
 		chess_analyze: createChessAnalyzeTool(ctx.chessEngine),
@@ -265,4 +266,5 @@ export function practiceTools(ctx: PracticeToolContext): Record<string, AgentToo
 		...(jobs ? { pdf: jobs.pdf! } : {}),
 		...(ctx.graph ? proberGraphTools(ctx.graph) : {}),
 	});
+	return guardChessEvidence(registry, ctx.chessEvidence);
 }

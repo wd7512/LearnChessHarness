@@ -1,6 +1,6 @@
 # LearnHarness Chess
 
-Open **Chess** in the sidebar, or visit `/chess`. The existing non-chess lessons,
+The app opens on **Home**, the chess dashboard at `/`. `/chess` remains a supported workspace route. Home recommends one next step from actual history, with review, practice and lesson continuation nearby; Study, Connections, engine Settings and detailed Progress remain separate. The general learning map is available at `/learning-map`. The existing non-chess lessons,
 model settings, knowledge graph and practice flow remain in use. No provider key,
 game import or platform account is needed to read the 24 concept cards or try the
 board preview. Starting a guided lesson uses the existing configured LearnHarness
@@ -31,6 +31,15 @@ Practice extends the existing `problem` contract with an optional `chess` field;
 thinking and requests for hints remain available beside the board. A structured
 board answer is validated again at the server's native input seam. No parallel
 teacher or practice agent is introduced.
+
+Interactive and static boards share SVG pieces, external file/rank coordinates
+and shape-based selection, last-move, move-dot and capture-ring markers. Clicking
+the selected square again clears selection without changing the position or move
+history. Text questions centre a compact diagram beside nearby answer choices;
+the full accessible description remains on the board and behind a collapsed
+**Position description** control. Native lessons and chess reuse the same
+reasoning/submit field and snapped confidence control, including dictation target
+registration and finish-before-submit handling of late transcripts.
 
 The board supports click/keyboard selection, orientation, castling, all four
 promotion choices, en passant, check, terminal outcomes, undo, restart, SAN history,
@@ -99,13 +108,63 @@ interrupted review honestly and offers resumption by starting again. Findings us
 only that selected group, link to original game positions and launch a lesson that
 probes understanding first. Individual-game analysis remains available.
 
-The first concept detector is deliberately narrow: **piece safety**. An opportunity
-is a learner position containing an attacked, undefended non-pawn piece. A candidate
-error requires exposed material after the move and at least 150 cp of bounded
-engine loss. Centipawn loss alone does not attach a concept. Patterns include
-supporting game positions, opportunity counts, examples and limitations; fewer
-than three distinct supporting games are labelled insufficient evidence. This
-rule-based detector is a hypothesis generator, not a diagnosis of understanding.
+Every detected mistake (at least 150 cp loss or a newly recorded losing mate result)
+receives supported board-event categories or an explicit **uncategorised / needs
+review** status. Detectors cover material loss in a checked line, an undefended
+piece captured by a legal reply, an existing *legal* threat left unanswered,
+a fork in the verified reply, and newly recorded mating consequences. Pinned
+geometric attackers do not establish pre-existing legal threats. These categories
+do not establish why the learner chose a move; the tutor must probe the cause.
+Unrecognised endgame technique errors remain unresolved instead of receiving a
+forced label. This is not a comprehensive chess assessment.
+
+Repeated poor moves are grouped by actual position (pieces, side to move,
+castling and legal en-passant rights) plus the chosen UCI move, including
+transpositions. Move counters are excluded. Findings distinguish visits, distinct
+games reaching the position, choices of the move, analyzed visits and verified
+mistakes. A recurrence needs two distinct supporting games.
+Ranking puts frequent verified recurrences first, then mating consequences and
+median observed loss. A repeated familiar position never establishes a broad
+weakness: broader category patterns need at least three games and two distinct
+positions. Findings link to evidence, a short targeted practice session and
+source-labelled lessons. Only the selected scope's results are presented as
+results for that scope.
+
+## Opening evidence before assessment
+
+Every imported game is deterministically classified from its validated moves and
+resulting positions against **3,865 CC0 Lichess opening lines**. Existing stored
+games are backfilled idempotently; raw PGNs, moves and fingerprints remain intact.
+Nonstandard starts and unmatched openings are explicit. No engine or model is
+needed for classification. The six study previews remain a small curated subset;
+`chess_reference` searches the full catalogue and returns a sourced opening card,
+including King's Gambit branches.
+
+Opening-based teaching follows **classify → scope → survey → probe → plan**:
+
+1. `chess_history` `scope` returns a receipt naming the requested opening, time
+   control and learner side, matching-game counts, measured branch/continuation
+   distributions, analysis coverage and a cited legal reference card.
+2. `list` enumerates *all* matching games using `page`/`pageSize` (maximum 100),
+   rather than presenting five recent IDs as an opening sample.
+3. With `survey: true`, scope starts a bounded survey: recent 10 by default,
+   at most four branch-entry/forcing-risk learner positions per game, depth 12
+   or 100,000 nodes per search. Existing full analysis is reused where it covers
+   those positions. Coverage is stored explicitly and never described as a
+   full-game assessment. Individual-game analysis still analyzes every learner move.
+4. New and existing opening sessions receive these artifacts before assessment.
+   Runtime gates block probe questions, practice problems, `probe_done` and plan
+   writes while evidence is missing, and require the agent to receive a fresh
+   ready scope receipt after an asynchronous survey finishes. Pending/unavailable
+   analysis gives progress/setup and a scoped review route instead of a generic probe.
+5. Questions and plan emphasis must follow actual positions and the observed
+   branch distribution. Source lines certify names and legal sequences, not
+   objective quality or population frequencies. Tactical claims require recorded
+   engine evidence. Empty or unrecognised scopes remain explicit and correctable.
+
+The CC0 TSV inputs, licence and pinned upstream revision are in
+`public/chess/openings/`; `node scripts/build-chess-openings.mjs` checks every line
+with chess.js and regenerates the bundled catalogue.
 
 ## Practise my mistakes
 
@@ -241,13 +300,22 @@ analyzes a synthetic game and confirms the same counts through tutor history.
 `--standalone` and `--runtime` point it at a packaged app; the release matrix runs
 this gate on each target OS.
 
+`tests/chess-answer-controls.test.tsx` verifies shared confidence, non-overlapping
+coordinates, collapsed descriptions and inclusion of late dictated reasoning.
+`tests/chess-findings-openings.test.ts` covers transpositions, distinct frequency
+denominators, unresolved categories, legal threats, opening backfill, source cards,
+pagination and assessment gates. `scripts/smoke-chess-refinements.mjs` exercises
+real Stockfish review/practice, measured opening receipts and compact desktop/mobile
+questions against a disposable profile. Set `LH_CHESS_SMOKE_DISPOSABLE=1` and,
+optionally, `LH_CHESS_VISUAL_CHAT` to a seeded pending-question fixture.
+
 ## Dependencies and licences
 
 - LearnHarness retains AGPL-3.0-only.
 - chess.js **1.4.0** is BSD-2-Clause, includes its own TypeScript definitions, and
   runs in both the React 19 browser and the Node server. It is the only new runtime
-  npm dependency. The board is a small native React view using Unicode pieces;
-  no Chess.com assets or third-party board art are copied.
+  npm dependency. The board is a small native React view with the familiar Lichess brown palette;
+  Pieces use the unmodified Cburnett SVG set by Colin M. L. Burnett, distributed under GPL-2.0-or-later. Attribution, editable SVG source and licence are in `public/chess/cburnett/`. No Chess.com artwork is distributed.
 - Stockfish 19 is a separate, unmodified GPL-3.0-or-later UCI executable. Packaging
   downloads checksum-pinned official platform archives at build time and ships
   `COPYING-GPL-3.0.txt`, AUTHORS, provenance, corresponding source/build scripts/wiki
@@ -258,6 +326,6 @@ this gate on each target OS.
   `scripts/stockfish-assets.json` records release/archive/network hashes;
   `stockfish:prepare` stages them, and packaging fails its native UCI smoke gate
   if a required payload or analysis is unavailable. No engine binary is stored in git.
-- The named opening examples are derived from the CC0 Lichess chess-openings
+- Opening classification, source cards and named examples derive from the CC0 Lichess chess-openings
   dataset: <https://github.com/lichess-org/chess-openings>.
 - The FIDE Laws link is a source reference; the law text is not redistributed.

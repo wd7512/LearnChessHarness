@@ -1,0 +1,6 @@
+{
+  "repository": "https://github.com/lichess-org/chess-openings",
+  "revision": "3ba6b20d31b2e6125cb0e6a2e792f400717d9d39",
+  "licence": "CC0-1.0",
+  "authority": "Opening names and canonical move sequences; not engine evaluations or population frequencies."
+}

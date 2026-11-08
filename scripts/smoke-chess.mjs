@@ -33,6 +33,7 @@ const api = async (input) =>
 try {
 	await page.setViewport({ width: 1440, height: 1180 });
 	await page.goto(`${base}/chess`, { waitUntil: "domcontentloaded" });
+	await button("Study");
 	await page.waitForSelector("[data-testid=chess-board]");
 	await page.waitForFunction(() => !document.querySelector("button[data-square=g2]")?.disabled);
 	await page.click("[data-square=g2]");
@@ -54,10 +55,10 @@ try {
 	await page.click("[data-square=g1]");
 	await page.click("[data-square=f1]");
 	await page.type(
-		"[aria-label='Your explanation']",
+		"[aria-label='Your thinking']",
 		"The pawn move creates an escape square. With no queens, I can consider activating the king after checking threats.",
 	);
-	await button("Submit moves");
+	await button("Submit answer");
 	await page.waitForFunction(() => document.body.textContent.includes("Your moves match the lesson rubric."));
 	await shot("02-board-answer");
 	await button("Games");
@@ -87,7 +88,7 @@ try {
 	}
 	state = await page.evaluate(async () => (await fetch("/api/chess")).json());
 	assert.equal(state.weaknesses[0]?.conceptId, "piece-safety");
-	assert.equal(state.weaknesses[0]?.confidence, "tentative recurring pattern");
+	assert.equal(state.mistakeFindings.repeated.length > 0, true);
 	await page.evaluate(() => {
 		const main = document.querySelector("[data-testid=chess-workspace]");
 		main.scrollTop = main.scrollHeight;
@@ -115,12 +116,12 @@ try {
 	});
 	await button("Progress");
 	await page.reload({ waitUntil: "domcontentloaded" });
-	await page.waitForSelector("[data-testid=chess-board]");
+	await page.waitForSelector("[data-testid=chess-workspace]");
 	await button("Progress");
-	await page.waitForFunction(() => document.body.textContent.includes("tentative recurring pattern"));
+	await page.waitForFunction(() => document.body.textContent.includes("Evidence, over time."));
 	await shot("05-progress");
 	await page.setViewport({ width: 390, height: 844 });
-	await button("Learn");
+	await button("Study");
 	await page.evaluate(() => {
 		document.querySelector("[data-testid=chess-workspace]").scrollTop = 0;
 	});

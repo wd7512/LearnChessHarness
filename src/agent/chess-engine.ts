@@ -133,6 +133,7 @@ export async function analyzeChessGame(
 	game: ChessGame,
 	engine: ChessEngine,
 	settings = { depth: 12, nodes: 100_000 },
+	sampledPlies?: readonly number[],
 ): Promise<ChessAnalysis> {
 	const result: ChessAnalysis = {
 		gameId: game.id,
@@ -144,7 +145,7 @@ export async function analyzeChessGame(
 	};
 	const board = new Chess(game.initialFen);
 	for (let ply = 0; ply < game.moves.length; ply++) {
-		const learnerMove = board.turn() === game.learnerColor[0];
+		const learnerMove = board.turn() === game.learnerColor[0] && (!sampledPlies || sampledPlies.includes(ply + 1));
 		const beforeBoard = new Chess(board.fen());
 		const before = learnerMove ? await engine.evaluate(board.fen()) : null;
 		playUci(board, game.moves[ply]!);
@@ -166,5 +167,6 @@ export async function analyzeChessGame(
 				: [];
 		result.positions.push({ ply: ply + 1, before, after, lossCp, conceptIds, opportunityIds });
 	}
+	if (sampledPlies) result.coverage = { mode: "opening-survey", sampledPlies: [...sampledPlies], totalLearnerPositions: Math.ceil((game.moves.length - (game.learnerColor === "black" ? 1 : 0)) / 2) };
 	return result;
 }

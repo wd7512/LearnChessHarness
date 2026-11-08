@@ -1,6 +1,7 @@
 import { Chess, type Square } from "chess.js";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { chessPositionKey } from "./chess-workflows.ts";
 
 const uci = Type.String({ pattern: "^[a-h][1-8][a-h][1-8][qrbn]?$" });
 /** Scripted replies are the MVP. Legal moves outside the lesson stay playable. */
@@ -153,6 +154,7 @@ export function chessSquares(color: "white" | "black"): Square[] {
 
 export type ChessPlatform = "manual" | "chesscom" | "lichess";
 export interface ChessGame {
+	opening?: import("./chess-openings.ts").OpeningClassification;
 	id: string;
 	fingerprint: string;
 	platform: ChessPlatform;
@@ -190,6 +192,7 @@ export interface ChessAnalysis {
 	engine: string;
 	settings: { depth: number; nodes: number };
 	analyzedAt: string;
+	coverage?: { mode: "opening-survey"; sampledPlies: number[]; totalLearnerPositions: number };
 	positions: {
 		ply: number;
 		before: ChessEvaluation;
@@ -266,8 +269,9 @@ export function chessWeaknesses(state: ChessState) {
 		.filter((g) => g.examples.length)
 		.map((g) => ({
 			...g,
+			distinctPositions: new Set(g.examples.map(e => chessPositionKey(e.fen))).size,
 			confidence:
-				new Set(g.examples.map((e) => e.gameId)).size >= 3
+				new Set(g.examples.map((e) => e.gameId)).size >= 3 && new Set(g.examples.map(e => chessPositionKey(e.fen))).size >= 2
 					? "tentative recurring pattern"
 					: "insufficient evidence",
 			limitations:

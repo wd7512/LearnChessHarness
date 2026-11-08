@@ -2396,7 +2396,7 @@ function DockOverlay({
 							className={mode === initialModeRef.current ? "flow-root" : "flow-root dock-variant"}
 						>
 								{pending?.tool === "chessboard" ? (
-									<ChessQuestionDock input={pending.input} toolCallId={pending.toolCallId} draftKey={`${chatId}:${pending.toolCallId}`} expanded={expanded} onExpand={expandAndReveal} onSubmit={onSubmitAnswer} disabled={compactionRunning} />
+									<ChessQuestionDock input={pending.input} toolCallId={pending.toolCallId} draftKey={`${chatId}:${pending.toolCallId}`} onEscape={dictationCancel} expanded={expanded} onExpand={expandAndReveal} onSubmit={onSubmitAnswer} disabled={compactionRunning} />
 								) : pending ? (
 								<QuestionDock
 									toolName={pending.tool as "quiz" | "probe" | "ask_user_question" | "explain" | "recall"}
