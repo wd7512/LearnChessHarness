@@ -14,6 +14,7 @@
 	"main": "electron/main.cjs",
 	"scripts": {
 		"dev": "next dev",
+		"stockfish:prepare": "node scripts/prepare-stockfish.mjs",
 		"build": "next build",
 		"start": "next start",
 		"test": "NODE_ENV=test tsx --test tests/*.test.ts tests/*.test.tsx",
@@ -38,6 +39,7 @@
 		"@streamdown/mermaid": "^1.0.2",
 		"@xyflow/react": "^12.11.3",
 		"ansi-to-react": "^6.2.6",
+		"chess.js": "1.4.0",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",

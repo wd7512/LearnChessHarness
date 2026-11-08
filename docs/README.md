@@ -1,5 +1,7 @@
 # Documentation
 
+- [Chess learning workspace](chess.md): playable questions, PGN review, Stockfish, public accounts and progress evidence.
+
 ## User guides
 
 - [Getting started](getting-started.md) — connections, models, sessions, dictation, files, and notes imports.

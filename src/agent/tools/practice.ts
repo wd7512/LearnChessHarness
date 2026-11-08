@@ -15,6 +15,11 @@
  */
 
 import { Type, type Static } from "typebox";
+import { chessQuestionProblems, chessQuestionSchema } from "../../core/chess.ts";
+import { chessDiagramProblems, chessDiagramSchema } from "../../core/chess-diagram.ts";
+import { createChessAnalyzeTool, createChessHistoryTool, chessReferenceTool, guardChessEvidence } from "./chess.ts";
+import type { ChessEngine } from "../chess-engine.ts";
+import type { ChessHistoryReader } from "../../core/chess-workflows.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { resolveTargetId } from "../../core/chains.ts";
 import { readTool } from "./read.ts";
@@ -31,8 +36,12 @@ import { healEncodedArguments, healToolRecord } from "./heal.ts";
 
 /** The record-reading context the gates need (the plan-tools idiom). */
 export interface PracticeToolContext {
+	chessEngine?: () => Promise<ChessEngine>;
+	chessHistory?: ChessHistoryReader;
+	chessEvidence?: () => Promise<string | undefined>;
 	chatId: string;
-	chatStore: { getChat(id: string): { messages: LhMessage[]; kind?: string } | null };
+	chatStore: { getChat(id: string): { messages: LhMessage[]; kind?: string } | null;
+	};
 	/** The WHOLE-graph node list, read fresh per pose (owner round 9 — the
 	 *  mastery-trace contract): targets validate against every proposition,
 	 *  not just the session's picks, so pickless sessions and future
@@ -70,6 +79,8 @@ export function createPracticeGate(ctx: PracticeToolContext): PracticeGate {
 // ─── problem: the pose ───────────────────────────────────────────────────────
 
 export const problemInputObject = Type.Object({
+	position: Type.Optional(chessDiagramSchema),
+	chess: Type.Optional(chessQuestionSchema),
 	statement: Type.String({
 		description:
 			"REQUIRED — the problem as the learner sees it (markdown + LaTeX). Must be self-contained and " +
@@ -134,6 +145,12 @@ export function problemTool(
 			return { ...(healed as Record<string, unknown>), target: normalized } as never;
 		},
 		execute: async (_toolCallId, input) => {
+			const diagramProblems = input.chess ? [] : chessDiagramProblems(input);
+			if (diagramProblems.length) return invalidInputResult("problem", diagramProblems);
+			if (input.chess) {
+				const problems = chessQuestionProblems(input.chess);
+				if (problems.length) return invalidInputResult("problem", problems);
+			}
 			if (gate.problemActive) {
 				return invalidInputResult("problem", [
 					"a problem is already active — call conclude on it before posing the next one",
@@ -235,8 +252,11 @@ export function practiceTools(ctx: PracticeToolContext): Record<string, AgentToo
 	// the standard argument heal over the WHOLE registry. problem/conclude
 	// keep their own (target-normalizing) prepareArguments as the composed
 	// inner pass; the double heal is idempotent by construction.
-	return healToolRecord({
+	const registry = healToolRecord({
 		problem: problemTool(gate, ctx.graphNodes),
+		chess_reference: chessReferenceTool,
+		chess_analyze: createChessAnalyzeTool(ctx.chessEngine),
+		chess_history: createChessHistoryTool(ctx.chessHistory),
 		conclude: concludeTool(gate),
 		read: readTool,
 		ls: lsTool,
@@ -246,4 +266,5 @@ export function practiceTools(ctx: PracticeToolContext): Record<string, AgentToo
 		...(jobs ? { pdf: jobs.pdf! } : {}),
 		...(ctx.graph ? proberGraphTools(ctx.graph) : {}),
 	});
+	return guardChessEvidence(registry, ctx.chessEvidence);
 }

@@ -1,0 +1,199 @@
+import { Type } from "typebox";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { chessQuestionProblems, chessQuestionSchema } from "../../core/chess.ts";
+import { openingReferenceCard, openingReferences } from "../../core/chess-openings.ts";
+import { CHESS_CONCEPTS, CHESS_OPENINGS } from "../../core/chess-curriculum.ts";
+import { invalidInputResult, questionResult } from "../tool-execute.ts";
+import { Chess } from "chess.js";
+import { playUci } from "../../core/chess.ts";
+import { StockfishEngine, type ChessEngine } from "../chess-engine.ts";
+import type { ChessHistoryReader } from "../../core/chess-workflows.ts";
+
+export const chessboardTool: AgentTool<typeof chessQuestionSchema> = {
+	name: "chessboard",
+	label: "chessboard",
+	parameters: chessQuestionSchema,
+	executionMode: "sequential",
+	description:
+		"Pose one legal chessboard question and pause for a learner answer. Supply a FEN, learner side, 1–8 learner moves and fixed replies between them, acceptable learner-only UCI lines and a separate explanation rubric. Every line is validated by chess.js. Legality and lesson-line matching are deterministic; neither certifies engine quality. Never invent an engine evaluation. A legal deviation ends guided replies and permits exploration. Use chess_reference for source-labelled concepts and opening examples. In a teaching plan include its nodeId; omit during probing.",
+	execute: async (_id, input) => {
+		const problems = chessQuestionProblems(input);
+		return problems.length ? invalidInputResult("chessboard", problems) : questionResult();
+	},
+};
+const referenceSchema = Type.Object({
+	query: Type.String({ description: "Concept id, opening name, or empty for the library index." }),
+});
+export const chessReferenceTool: AgentTool<typeof referenceSchema> = {
+	name: "chess_reference",
+	label: "chess_reference",
+	parameters: referenceSchema,
+	description:
+		"Read the versioned curated chess concept cards and legal named opening examples, with source authority. This returns principles and rule-checked lines, not engine evaluations or empirical frequencies.",
+	execute: async (_id, { query }) => {
+		const term = query.trim().toLowerCase();
+		const cards = CHESS_CONCEPTS.filter(
+			(c) => !term || `${c.concept_id} ${c.title} ${c.principle}`.toLowerCase().includes(term),
+		);
+		const openings = term ? openingReferences(query).slice(0, 25).map(o => ({ ...o, source: "CC0 Lichess opening catalogue; rule-checked, not engine evaluated" })) : CHESS_OPENINGS;
+		return {
+			content: [
+				{
+					type: "text",
+					text: JSON.stringify({
+						cards,
+						openings,
+						openingCard: term ? openingReferenceCard(query) : null,
+						authority:
+							"Rules: chess.js. Concepts: editorial principles. Opening names: CC0 Lichess examples. Engine analysis must come from recorded Stockfish output.",
+					}),
+				},
+			],
+			details: null,
+		};
+	},
+};
+
+const analyzeSchema = Type.Object({
+	fen: Type.String(),
+	moves: Type.Array(Type.String(), {
+		maxItems: 16,
+		description: "Optional full alternating UCI continuation to verify, not learner-only moves.",
+	}),
+});
+export function createChessAnalyzeTool(
+	openEngine?: () => Promise<ChessEngine>,
+): AgentTool<typeof analyzeSchema> {
+	return {
+	name: "chess_analyze",
+	label: "chess_analyze",
+	parameters: analyzeSchema,
+	executionMode: "sequential",
+	description:
+		"Verify a FEN and optional full legal UCI continuation using installed Stockfish. Returns engine identity, actual depth/nodes and exact bounded evaluations in White's perspective. Missing engine gives an explicit unavailable result, never an invented score. Use this before describing a move as engine-verified. No live-game endpoints are used.",
+	execute: async (_id, input) => {
+		let board: Chess;
+		try {
+			board = new Chess(input.fen);
+			for (const move of input.moves) playUci(board, move);
+		} catch (e) {
+			return invalidInputResult("chess_analyze", [e instanceof Error ? e.message : "Invalid continuation"]);
+		}
+			let engine: ChessEngine | undefined;
+			try {
+				if (openEngine) engine = await openEngine();
+				else {
+					const stockfish = new StockfishEngine();
+					engine = stockfish;
+					await stockfish.ready();
+				}
+				board = new Chess(input.fen);
+			const evaluations = [await engine.evaluate(board.fen())];
+			for (const move of input.moves) {
+				playUci(board, move);
+				evaluations.push(await engine.evaluate(board.fen()));
+			}
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({
+							status: "verified",
+							engine: engine.name,
+							settings: { depth: 12, nodes: 100_000 },
+							evaluations,
+						}),
+					},
+				],
+				details: null,
+			};
+		} catch (e) {
+			return {
+				content: [
+					{
+						type: "text",
+						text: JSON.stringify({
+							status: "unavailable",
+							message: e instanceof Error ? e.message : "Stockfish unavailable",
+							evaluations: [],
+							limitation:
+								"No engine evaluation is available. Use legal moves and label lesson rubrics as unverified by an engine.",
+						}),
+					},
+				],
+				details: null,
+			};
+		} finally {
+			engine?.close();
+		}
+	},
+};
+}
+export const chessAnalyzeTool = createChessAnalyzeTool();
+
+const historySchema = Type.Object({
+	view: Type.Union([
+		Type.Literal("summary"),
+		Type.Literal("list"),
+		Type.Literal("scope"),
+		Type.Literal("game"),
+		Type.Literal("position"),
+		Type.Literal("practice"),
+	]),
+	opening: Type.Optional(Type.String()),
+	speed: Type.Optional(Type.String()),
+	learnerColor: Type.Optional(Type.Union([Type.Literal("white"), Type.Literal("black")])),
+	page: Type.Optional(Type.Integer({ minimum: 1 })),
+	pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+	limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+	survey: Type.Optional(Type.Boolean({ description: "With scope and an opening, start a bounded corpus survey before probing. Progress is available in Games; re-read scope to check readiness." })),
+	gameId: Type.Optional(Type.String()),
+	ply: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+export function createChessHistoryTool(read?: ChessHistoryReader): AgentTool<typeof historySchema> {
+	return {
+		name: "chess_history",
+		label: "chess_history",
+		parameters: historySchema,
+		description:
+			"Read the learner's connected public chess accounts, imported games, actual completed Stockfish analyses, evidence-backed recurring patterns and prior chess practice. Call summary FIRST. For an opening, scope returns a scope receipt, branch histogram, paginated matching games and a sourced reference card; survey=true starts bounded analysis. list enumerates ALL matching games using opening/speed/learnerColor filters and page/pageSize. Then load game/position/practice only as needed. Classify, survey the corpus, then probe into the branches with evidence; never substitute five recent IDs for an opening scope. This chess history is separate from the general learning graph. An empty graph does not imply no chess games. Retrieval failures are unavailable data access, never evidence of an empty history. Do not ask for PGNs that are already imported.",
+		execute: async (_id, input) => {
+			try {
+				if (!read) throw new Error("Chess history access was not connected for this agent.");
+				const data = await read(input);
+				return {
+					content: [{ type: "text", text: JSON.stringify(data) }],
+					details: null,
+				};
+			} catch {
+				return {
+					content: [
+						{
+							type: "text",
+							text: JSON.stringify({
+								status: "unavailable",
+								message:
+									"Chess history could not be retrieved. This is a data-access failure, not an empty history. Open the Chess workspace to retry; do not request a duplicate upload.",
+							}),
+						},
+					],
+					details: null,
+					isError: true,
+				};
+			}
+		},
+	};
+}
+
+/** History-based opening study cannot pose or conclude assessment before the corpus is surveyed. */
+export function guardChessEvidence(registry: Record<string, AgentTool<any>>, gate?: () => Promise<string | undefined>) {
+	if (!gate) return registry;
+	return Object.fromEntries(Object.entries(registry).map(([name, tool]) => {
+		if (!["probe", "recall", "quiz", "explain", "chessboard", "problem", "probe_done"].includes(name) && !name.startsWith("plan_")) return [name, tool];
+		return [name, { ...tool, execute: async (...args: Parameters<typeof tool.execute>) => {
+			let problem: string | undefined;
+			try { problem = await gate(); } catch { problem = "The opening corpus evidence could not be retrieved. This is an access failure, not an empty history. Retry chess_history before assessing or planning."; }
+			return problem ? invalidInputResult(name, [problem]) : tool.execute(...args);
+		} }];
+	}));
+}

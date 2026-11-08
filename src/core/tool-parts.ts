@@ -28,6 +28,8 @@
  */
 
 import { Value } from "typebox/value";
+import { chessDiagramProblems } from "./chess-diagram.ts";
+import { parseChessQuestion, type ChessQuestion } from "./chess.ts";
 import type { TSchema } from "typebox";
 import { quizDisplayInputSchema, askInputSchema, askOptionProblems, quizInputProblems, explainInputProblems, explainDisplayInputSchema, type AskToolInput, type QuizToolInput, type ExplainToolInput } from "./question-core.ts";
 import { healEncodedArguments } from "./argument-heal.ts";
@@ -97,6 +99,7 @@ export function parseAskInput(input: unknown): AskToolInput | undefined {
 	const cleaned = boundaryParse<AskToolInput>(askInputSchema, healEncodedArguments(input, askInputSchema));
 	if (!cleaned) return undefined;
 	if (askOptionProblems(cleaned.options ?? []).length > 0) return undefined;
+	if (chessDiagramProblems(cleaned).length > 0) return undefined;
 	return cleaned;
 }
 
@@ -115,8 +118,9 @@ export function parseExplainInput(input: unknown): ExplainToolInput | undefined 
 
 /** One display-validity decision for dock authority and recovery. Does not
  * mutate the recorded input or invent missing authoring fields. */
-export function parseQuestionInput(tool: string, input: unknown): QuizToolInput | AskToolInput | ExplainToolInput | undefined {
+export function parseQuestionInput(tool: string, input: unknown): QuizToolInput | AskToolInput | ExplainToolInput | ChessQuestion | undefined {
 	switch (tool) {
+		case "chessboard": return parseChessQuestion(input);
 		case "quiz": case "probe": return parseQuizInput(input);
 		case "explain": case "recall": return parseExplainInput(input);
 		case "ask_user_question": return parseAskInput(input);

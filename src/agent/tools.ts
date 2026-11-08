@@ -1,4 +1,12 @@
+import { guardChessEvidence } from "./tools/chess.ts";
 import { Type } from "typebox";
+import { chessDiagramProblems } from "../core/chess-diagram.ts";
+import {
+	createChessAnalyzeTool,
+	createChessHistoryTool, chessboardTool, chessReferenceTool } from "./tools/chess.ts";
+import type { ChessEngine } from "./chess-engine.ts";
+import type { ChessHistoryReader } from "../core/chess-workflows.ts";
+import { chessQuestionSchema } from "../core/chess.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { invalidInputResult, questionResult, serverExecute } from "./tool-execute.ts";
 import {
@@ -77,6 +85,12 @@ function prepareQuestionArguments<T extends object>(args: unknown): T {
 	return args as T;
 }
 
+/** An explicit request from the chess workspace opts into all three answer modalities. */
+function chessLessonRequested(messages: readonly { role?: string; content?: unknown }[]) {
+	return messages.some(
+		(m) => m.role === "user" && typeof m.content === "string" && m.content.startsWith("[LearnHarness Chess lesson]"));
+}
+
 export const askUserQuestionTool: AgentTool<typeof askInputSchema> = {
 	name: "ask_user_question",
 	label: "ask_user_question",
@@ -89,7 +103,7 @@ export const askUserQuestionTool: AgentTool<typeof askInputSchema> = {
 	prepareArguments: prepareQuestionArguments,
 	executionMode: "sequential",
 	execute: async (_toolCallId, input) => {
-		const problems = askOptionProblems(input.options ?? []);
+		const problems = [...askOptionProblems(input.options ?? []), ...chessDiagramProblems(input)];
 		if (problems.length > 0) return invalidInputResult("ask_user_question", problems);
 		return questionResult();
 	},
@@ -141,7 +155,8 @@ export const quizExampleBody = {
  *  own fields (its NAME among them — the probe-phase tools self-reference
  *  as probe/recall, owner 2026-10-09). All mechanics, zero doctrine — plus
  *  the one sanctioned example (above). */
-function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types: boolean }): string {
+function quizDescription(delta: { name: "quiz" | "probe"; nodeId: boolean; types: boolean;
+}): string {
 	const base =
 		"Ask the learner a GRADED question with a known correct answer, then instantly grade and give feedback. " +
 		"Unlike ask_user_question (which collects preferences/decisions with no right answer), " +
@@ -265,6 +280,9 @@ export const probeExplainTool: AgentTool<typeof explainInputBase> = {
  *  ProbeDoneContext) PLUS the job-dispatch wiring, since the owner ruling
  *  (2026-09-20) puts research + pdf in the probe phase's registry too. */
 export interface ProberToolContext extends ProbeDoneContext {
+	chessEngine?: () => Promise<ChessEngine>;
+	chessHistory?: ChessHistoryReader;
+	chessEvidence?: () => Promise<string | undefined>;
 	/** Creates the job record (deduped by toolCallId). */
 	jobStore: JobStore;
 	/** Fire the background runner for a freshly created job. */
@@ -311,14 +329,20 @@ export function createProberTools(
 	// differently-typed literals makes the whole object's type a union —
 	// unusable as Record<string, AgentTool<any>> downstream).
 	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { recall: probeExplainTool } : { probe: probeQuizTool };
+		chessLessonRequested(ctx.chatStore?.getChat?.(ctx.chatId)?.messages ?? [])
+			? { probe: probeQuizTool, recall: probeExplainTool }
+			: mechanics === "free" ? { recall: probeExplainTool } : { probe: probeQuizTool };
 	// healToolRecord (owner, 2026-10-09 — the whitehead generalization):
 	// the standard argument heal over the WHOLE registry — every tool,
 	// not just the one the latest wobble incident landed on.
-	return healToolRecord({
+	const registry = healToolRecord({
 		...filterEnabledTools(
 			{
 				...quizzing,
+				chessboard: chessboardTool,
+				chess_reference: chessReferenceTool,
+				chess_analyze: createChessAnalyzeTool(ctx.chessEngine),
+				chess_history: createChessHistoryTool(ctx.chessHistory),
 				ask_user_question: askUserQuestionTool,
 				// The learner-filesystem set is always-on (user-decided 2026-09,
 				// sources v1): the prober inspects and LOCATES learner-referenced
@@ -346,6 +370,7 @@ export function createProberTools(
 			),
 			...done,
 		});
+	return guardChessEvidence(registry, ctx.chessEvidence);
 }
 
 // ─── the teacher's question tools (quiz carries the position field) ──────────
@@ -392,6 +417,9 @@ export function teachQuizToolFor(ctx: Pick<PlanToolContext, "chatId" | "chatStor
 }
 
 export interface TeacherToolContext extends PlanToolContext {
+	chessEngine?: () => Promise<ChessEngine>;
+	chessHistory?: ChessHistoryReader;
+	chessEvidence?: () => Promise<string | undefined>;
 	/** Job-tool wiring (sub-agent dispatch): the job store + the runner's
 	 *  spawn seam. The composition root injects both. */
 	jobStore: JobStore;
@@ -436,6 +464,11 @@ export function createTeacherTools(
 	ctx: TeacherToolContext,
 	enabled?: EnabledTools,
 ): Record<string, AgentTool<any>> {
+	const chessboard: AgentTool<typeof chessQuestionSchema> = { ...chessboardTool, execute: async (id, input) => {
+		const problem = nodeIdProblem(ctx, input.nodeId ?? "");
+		if (problem) return invalidInputResult("chessboard", [problem]);
+		return chessboardTool.execute(id, input);
+	} };
 	// Quizzing mechanics (owner 2026-09-27): free-recall swaps the teach
 	// quiz for the teach explain — one quizzing tool at a time, whichever
 	// the settings arm. ask stays always-on.
@@ -443,12 +476,18 @@ export function createTeacherTools(
 	// Same widening as the prober's (see above) — the conditional spread of
 	// two differently-typed literals collapses into an unusable union type.
 	const quizzing: Record<string, AgentTool<any>> =
-		mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
+		chessLessonRequested(ctx.chatStore?.getChat?.(ctx.chatId)?.messages ?? [])
+			? { quiz: teachQuizToolFor(ctx), explain: teachExplainToolFor(ctx) }
+			: mechanics === "free" ? { explain: teachExplainToolFor(ctx) } : { quiz: teachQuizToolFor(ctx) };
 	// healToolRecord — same standard as the prober's registry (above).
-	return healToolRecord(
+	const registry = healToolRecord(
 		filterEnabledTools(
 			{
 			...quizzing,
+			chessboard,
+			chess_reference: chessReferenceTool,
+			chess_analyze: createChessAnalyzeTool(ctx.chessEngine),
+				chess_history: createChessHistoryTool(ctx.chessHistory),
 			ask_user_question: askUserQuestionTool,
 			// The learner-filesystem set is always-on (user-decided 2026-09,
 			// sources v1): the teacher locates and reads learner-referenced
@@ -467,4 +506,5 @@ export function createTeacherTools(
 		withoutMechanics(enabled),
 		),
 	);
+	return guardChessEvidence(registry, ctx.chessEvidence);
 }

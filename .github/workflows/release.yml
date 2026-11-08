@@ -132,6 +132,8 @@ jobs:
       # Check the fresh trace before any static copying/curation.
       - run: node scripts/smoke-provider-runtime.mjs
       - run: node scripts/build-server.mjs
+      - run: npm run stockfish:prepare
+      - run: node scripts/smoke-stockfish.mjs
       - run: node scripts/smoke-server.mjs --electron
       - name: Validate macOS release secrets
         if: github.event_name == 'push' && runner.os == 'macOS'
@@ -190,6 +192,7 @@ jobs:
           esac
           node scripts/smoke-provider-runtime.mjs --standalone "$payload"
           node scripts/smoke-provider-runtime.mjs --standalone "$payload" --runtime "$runtime"
+          node scripts/smoke-chess-desktop.mjs --standalone "$payload" --runtime "$runtime"
       - name: Exercise packaged demo runtime (own Electron, no system Chrome)
         run: |
           case "$RUNNER_OS" in

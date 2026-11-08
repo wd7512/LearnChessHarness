@@ -1,4 +1,6 @@
 import type { Usage } from "@earendil-works/pi-ai";
+import { createChessStudyAccess } from "./chess-history.ts";
+import { stockfishRuntime } from "./chess-engine.ts";
 import {
 	createPracticeAgent,
 	createProberAgent,
@@ -446,7 +448,9 @@ export async function handleChatInput(
 		},
 		restoreAutomatic: (automaticIds, retainedIds) => restoreUncommittedAutomatic(chatId, constructed, automaticIds, retainedIds),
 	});
+	const chessStudy = await createChessStudyAccess(chatId, merged);
 	const agentOpts: AgentBuildOptions = {
+		chessContext: chessStudy.context,
 		engine,
 		callPurpose,
 		requestCycle,
@@ -473,6 +477,9 @@ export async function handleChatInput(
 					{
 						chatId,
 						chatStore: stores.chatStore,
+						chessEngine: () => stockfishRuntime.open(),
+						chessHistory: chessStudy.read,
+						chessEvidence: chessStudy.gate,
 						// TARGET VALIDATION (owner round 9): the practice tools read the
 						// WHOLE graph fresh per pose — targets validate against every
 						// proposition, not just the session's picks (pickless sessions
@@ -484,7 +491,7 @@ export async function handleChatInput(
 						// the SAME settings gate as the prober's.
 						jobs: {
 							chatId,
-							jobStore: stores.jobStore,
+						jobStore: stores.jobStore,
 							spawn: (job, input) => void jobRunner.runJob(job.id, input),
 							searchAvailable,
 						},
@@ -497,6 +504,9 @@ export async function handleChatInput(
 					{
 						chatId,
 						chatStore: stores.chatStore,
+						chessEngine: () => stockfishRuntime.open(),
+						chessHistory: chessStudy.read,
+						chessEvidence: chessStudy.gate,
 						jobStore: stores.jobStore,
 						spawn: (job, input) => void jobRunner.runJob(job.id, input),
 						// The registry drop's signal (2026-09-20): no live engine
@@ -509,6 +519,9 @@ export async function handleChatInput(
 					{
 						chatId,
 						chatStore: stores.chatStore,
+						chessEngine: () => stockfishRuntime.open(),
+						chessHistory: chessStudy.read,
+						chessEvidence: chessStudy.gate,
 						deliver: (steer) => void deliverJobResult(steer),
 						// Fix wave (2026-09-20): the prober carries research + pdf
 						// dispatch (owner ruling — phase-omnipresent), so its ctx

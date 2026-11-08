@@ -100,6 +100,8 @@ export type StepUsageCollector = (usage: Usage) => void;
 
 /** Per-request construction options (the handler wires all of these). */
 export interface AgentBuildOptions {
+	/** Fresh server-supplied chess history, separate from the learning graph. */
+	chessContext?: string;
 	/** Model + stream function — tests inject a scripted faux engine. */
 	engine?: PiEngine;
 	callPurpose?: { background: boolean };
@@ -187,7 +189,11 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const composedPrompt = opts.promptSwitches
 		? composeInstructions(kind, opts.promptSwitches)
 		: composedInstructions[kind]!;
-	const systemPrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
+	const groundedPrompt = opts.chessContext
+		? `${composedPrompt}\n\n---\n\n${opts.chessContext}`
+		: composedPrompt;
+	const systemPrompt = narrationGuard ? `${groundedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}`
+		: groundedPrompt;
 	// Debug recorder (owner, 2026-10-04): raw provider events when
 	// LH_PROVIDER_EVENTS=1 and the caller handed a chatId; undefined is
 	// the normal no-observer path (tests, env-off).
@@ -350,4 +356,3 @@ export type ProberAgent = ReturnType<typeof createProberAgent>;
 export type TeacherAgent = ReturnType<typeof createTeacherAgent>;
 export type PracticeAgent = ReturnType<typeof createPracticeAgent>;
 export type TeachingAgent = ProberAgent | TeacherAgent | PracticeAgent;
-

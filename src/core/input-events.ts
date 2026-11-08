@@ -29,6 +29,7 @@
  */
 
 import type { QuestionAnswerData } from "./question-core.ts";
+import { gradeChessAnswer, parseChessQuestion } from "./chess.ts";
 import type { LhMessage } from "./native-messages.ts";
 import {
 	activeProblemOf,
@@ -223,6 +224,14 @@ export function inputAppends(
 			if (!pending || pending.toolCallId !== input.toolCallId) {
 				throw new ChatInputError("answer input targets no pending question call");
 			}
+			if (pending.tool === "chessboard" && !input.answer.dismissed) {
+				const q = parseChessQuestion(pending.input);
+				if (!q || input.answer.kind !== "chessboard" || !input.answer.chess) throw new ChatInputError("A chessboard answer requires legal UCI moves.");
+				try {
+					const chessGrade = gradeChessAnswer(q, input.answer.chess);
+					return [newAnswerResult(input.toolCallId, pending.tool, { ...input.answer, questionText: q.objective, correct: undefined, chessGrade })];
+				} catch (e) { throw new ChatInputError(e instanceof Error ? e.message : "Invalid chess moves"); }
+			}
 			return [newAnswerResult(input.toolCallId, pending.tool, input.answer)];
 		}
 		case "continue":
@@ -237,6 +246,15 @@ export function inputAppends(
 			const active = activeProblemOf(record.messages);
 			if (!active || active.toolCallId !== input.problemCallId) {
 				throw new ChatInputError("thinking input targets no active problem");
+			}
+			const q = parseChessQuestion((active.input as { chess?: unknown })?.chess);
+			if (q) {
+				let parsed: { chessAnswer?: import("./chess.ts").ChessAnswer } | null = null;
+				try { parsed = JSON.parse(input.text); } catch { /* ordinary thinking and requests for hints remain available */ }
+				if (parsed?.chessAnswer) {
+					try { return [newThinkingMessage(input.problemCallId, JSON.stringify({ chessAnswer: parsed.chessAnswer, chessGrade: gradeChessAnswer(q, parsed.chessAnswer) }))]; }
+					catch (e) { throw new ChatInputError(e instanceof Error ? e.message : "Invalid chess answer"); }
+				}
 			}
 			return [...dismissalConclusion(record), newThinkingMessage(input.problemCallId, input.text)];
 		}

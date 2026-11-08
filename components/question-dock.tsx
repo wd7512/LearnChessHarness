@@ -8,6 +8,8 @@ import { useEnterSubmits } from "@/components/enter-submits";
 import { PathInput } from "@/components/path-input";
 import { MalformedQuestion } from "@/components/malformed-question";
 import { ToolContentResponse } from "@/components/ai-elements/message";
+import { ChessDiagram } from "@/components/chess-diagram";
+import { questionDiagram } from "@/src/core";
 import { cn } from "@/lib/utils";
 import {
 	buildAnswer,
@@ -38,7 +40,7 @@ import {
 	type SelectMode,
 	type Phase3,
 } from "@/src/core";
-import { CONFIDENCE_COLORS, confidenceRailStyle } from "@/components/confidence-rail";
+import { ConfidenceControl, AnswerField } from "@/components/answer-controls";
 
 /**
  * The question dock — a pending quiz/ask REPLACES the chat composer: the
@@ -285,7 +287,8 @@ function QuestionDockForm({
 						: "single-select"
 						: "text";
 		const options = normalizeOptions(
-			(quizInput?.options ?? askInput?.options ?? []) as { label: string; value?: string }[],
+			(quizInput?.options ?? askInput?.options ?? []) as { label: string; value?: string;
+			}[],
 		);
 		const ordered = kind === "quiz" && options.length > 0 ? shuffleOptions(options, seededRandom(toolCallId)) : options;
 		const q: QuestionData = {
@@ -586,8 +589,11 @@ function QuestionDockForm({
 					</div>
 				)}
 
+				<div data-testid={questionDiagram(input) ? "chess-question-layout" : undefined} className={questionDiagram(input) ? "mx-auto w-full max-w-2xl" : undefined}>
+				{questionDiagram(input) && <ChessDiagram position={questionDiagram(input)!} />}
+
 				{qd.mode !== "text" && (
-					<div className="flex flex-col gap-2 pb-2" role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
+					<div className={questionDiagram(input) ? "grid grid-cols-2 gap-1.5 pb-2" : "flex flex-col gap-2 pb-2"} role={qd.mode === "multi-select" ? "group" : "radiogroup"}>
 						{qd.options.map((opt, i) => {
 							const isSel = sel.selected.has(i);
 							return (
@@ -689,7 +695,8 @@ function QuestionDockForm({
 									)}
 								>
 									{sel.otherSelected && (
-										<span className={cn(qd.mode === "multi-select" ? "text-base leading-none" : "size-1.5 rounded-full bg-current")}>
+										<span className={cn(qd.mode === "multi-select" ? "text-base leading-none" : "size-1.5 rounded-full bg-current",
+											)}>
 											{qd.mode === "multi-select" ? "✓" : ""}
 										</span>
 									)}
@@ -737,6 +744,7 @@ function QuestionDockForm({
 						)}
 					</div>
 				)}
+				</div>
 			</div>
 
 			{/* Confidence (owner, 2026-10-01; UI rounds same day): a snapped
@@ -752,179 +760,22 @@ function QuestionDockForm({
 				app-wide). Clicking and dragging are native. "I don't know"
 				GRAYS it out — the layout holds, no value is sent, the IDK
 				signal stands alone. */}
-			{kind === "quiz" && (
-				<div className="border-t border-border/60 px-4 py-2.5">
-					<div className="flex items-center gap-3">
-						<span
-							className={cn(
-								"shrink-0 text-xs font-medium uppercase tracking-wide",
-								sel.dontKnow ? "text-muted-foreground/50" : "text-muted-foreground",
-							)}
-						>
-							Confidence
-						</span>
-						<div
-							className={cn("relative h-4 min-w-0 flex-1", sel.dontKnow && "opacity-40")}
-							data-testid="confidence-track"
-						>
-							{/* The RAIL is painted here, not on the input: this overlay spans
-								exactly the thumb-CENTER range (inset 8px = half the 16px disc,
-								left and right), so at 0 and 100 the disc sits flush against the
-								rail's very ends — no bare stub poking past it (owner round 4).
-								STACKING LAW (owner round 5): the input is absolute too — a
-								positioned overlay paints above an in-flow input no matter the
-								DOM order, which put the rail OVER the disc. Both positioned,
-								input later in DOM → the disc rides on top. The wrapper's height
-								is pinned (h-4) so the rail's top-1/2 and the disc's track share
-								one box — centered by construction, not by hope. */}
-							<div
-								aria-hidden
-								data-testid="confidence-rail"
-								className="pointer-events-none absolute top-1/2 left-2 right-2 h-1.5 -translate-y-1/2 rounded-full border border-border"
-								style={confidenceRailStyle(CONFIDENCE_STOPS[confIdx]!)}
-							/>
-							<input
-								type="range"
-								min={0}
-								max={100}
-								step={1}
-								value={CONFIDENCE_STOPS[confIdx]}
-								disabled={sel.dontKnow}
-								aria-label="Confidence — the probability your selected answer is correct"
-								aria-valuetext={`${CONFIDENCE_STOPS[confIdx]} percent`}
-								title="The probability your selected answer is correct — 50% is a coin flip. Adjust with ←/→."
-								data-testid="confidence-slider"
-								onChange={(e) => {
-									// Snap to the nearest stop; the rendered VALUE is the stop's own
-									// percent, so the thumb always rests at its true fraction (50 =
-									// halfway). Keyboard needs no handler here: the dock machine treats
-									// a focused range as non-typing (see the guard above) and its ←/→
-									// branch preventDefaults, which also cancels the native 1% step.
-									const v = Number(e.target.value);
-									let best = 0;
-									for (let i = 1; i < CONFIDENCE_STOPS.length; i++) {
-										if (Math.abs(CONFIDENCE_STOPS[i]! - v) < Math.abs(CONFIDENCE_STOPS[best]! - v)) best = i;
-									}
-									setConfIdx(best);
-								}}
-								style={{ color: CONFIDENCE_COLORS[confIdx] }}
-								className={cn(
-									"absolute inset-0 h-4 w-full cursor-pointer appearance-none bg-transparent outline-none",
-									"[&::-webkit-slider-runnable-track]:h-4 [&::-webkit-slider-runnable-track]:bg-transparent",
-									"[&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-current",
-									"[&::-moz-range-track]:h-4 [&::-moz-range-track]:bg-transparent",
-									"[&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-current",
-								)}
-							/>
-						</div>
-						<span
-							data-testid="confidence-value"
-							className={cn(
-								"w-9 shrink-0 text-right font-mono text-sm tabular-nums",
-								sel.dontKnow && "text-muted-foreground/50",
-							)}
-						>
-							{sel.dontKnow ? "—" : `${CONFIDENCE_STOPS[confIdx]}%`}
-						</span>
-					</div>
-				</div>
-			)}
+			{kind === "quiz" && <ConfidenceControl index={confIdx} onChange={setConfIdx} muted={sel.dontKnow} globalKeyboard />}
 
 			{/* The learner's half of the dock — a composer TWIN: a labeled, bordered
 			    field with Submit docked inside, exactly like the chat composer's
 			    send. Select modes get "Your thinking" (Enter makes a newline — it
 			    is for dumping, soon dictated; the button submits); text mode
 			    keeps "Your answer" with Enter-to-submit. */}
-			<form
-				className="border-t border-border/60 p-1.5"
-				onSubmit={(e) => {
-					e.preventDefault();
-					submit();
-				}}
-			>
-				<div
-					data-testid={qd.mode === "text" ? "answer-field" : "thinking-field"}
-					className="rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
-				>
-					<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-						{qd.mode === "text" ? "Your answer" : "YOUR THINKING"}
-					</div>
-					{qd.mode === "text" ? (
-						<PathInput
-							value={text}
-							onValueChange={(value) => {
-								answerTextRef.current = value;
-								setText(value);
-							}}
-							onKeyDown={(e) => {
-								// Esc ends dictation (the dictate decisions: click-again
-								// or Esc) — stopPropagation claims it (keyboard wave
-								// A) so the window chain doesn't also abort a turn.
-								if (e.key === "Escape" && onEscape) {
-									e.preventDefault();
-									e.stopPropagation();
-									onEscape();
-									return;
-								}
-								// Chat convention: Enter submits, Shift+Enter is a newline;
-								// ⌘/Ctrl+Enter also submits (universal across the app).
-								if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
-									e.preventDefault();
-									submit();
-								}
-							}}
-							placeholder="Type your answer…"
-							className="field-sizing-content lh-input max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
-						/>
-					) : (
-						<PathInput
-							ref={thinkingRef}
-							value={thinking}
-							onValueChange={(value) => {
-								thinkingTextRef.current = value;
-								setThinking(value);
-							}}
-							onKeyDown={(e) => {
-								// Esc ends dictation (the dictate decisions: click-again
-								// or Esc) — stopPropagation claims it (keyboard wave
-								// A) so the window chain doesn't also abort a turn.
-								if (e.key === "Escape" && onEscape) {
-									e.preventDefault();
-									e.stopPropagation();
-									onEscape();
-									return;
-								}
-								// THE STANDARD CHORD (owner round 5, 2026-10-05): Enter
-								// submits, Shift+Enter is a newline, ⌘/Ctrl+Enter works
-								// too — identical to the practice dock and the composer.
-								if (e.key === "Enter" && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
-									e.preventDefault();
-									submit();
-								}
-							}}
-							placeholder="Why this answer? Whatever comes to mind."
-							className={cn(
-								"field-sizing-content lh-input max-h-48 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground/70",
-								// Phase-scaled prominence: teaching invites depth,
-								// probing stays quick.
-								phase === "teach" ? "min-h-[4.5rem]" : "min-h-10",
-							)}
-						/>
-					)}
-					<div className="flex items-center justify-between gap-2 p-1">
-						<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
-								{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
-						</span>
-						<Button
-							type="submit"
-							disabled={!canSubmit || compactionRunning}
-							className="ml-auto h-9 rounded-[6px] px-3.5 text-sm font-medium"
-						>
-							Submit answer
-						</Button>
-					</div>
-				</div>
-			</form>
+			<AnswerField
+				value={qd.mode === "text" ? text : thinking}
+				onChange={value => { if (qd.mode === "text") { answerTextRef.current = value; setText(value); } else { thinkingTextRef.current = value; setThinking(value); } }}
+				onSubmit={submit} onEscape={onEscape} canSubmit={canSubmit} disabled={compactionRunning} hint={compactionRunning ? "compacting session…" : undefined}
+				label={qd.mode === "text" ? "Your answer" : "YOUR THINKING"}
+				placeholder={qd.mode === "text" ? "Type your answer…" : "Why this answer? Whatever comes to mind."}
+				testId={qd.mode === "text" ? "answer-field" : "thinking-field"}
+				inputRef={qd.mode === "text" ? undefined : thinkingRef} tall={phase === "teach"}
+			/>
 		</div>
 	);
 }

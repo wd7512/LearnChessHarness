@@ -84,6 +84,10 @@ files:
   # Main-process ID-token signature verification (no bundled OAuth implementation).
   - node_modules/jose/**/*
 extraResources:
+  - from: build/stockfish/${os}-${arch}
+    to: stockfish
+    filter:
+      - "**/*"
   # Attribution/license for the bounded local Pi cutoff-selector port.
   - from: docs/compaction-accounting.md
     to: licenses/pi-compaction.md
@@ -100,6 +104,8 @@ extraResources:
     filter:
       - "standalone/**/*"
 mac:
+  binaries:
+    - Contents/Resources/stockfish/stockfish
   # The backend's --require runs before Next loads. Keep this resource
   # outside app.asar so early Node-mode loading needs no ASAR support.
   extraResources:
@@ -150,6 +156,7 @@ dmg:
       y: 190
       type: link
       path: /Applications
+beforePack: scripts/before-pack.cjs
 afterPack: scripts/after-pack.cjs
 win:
   icon: build/icon.ico

@@ -3,11 +3,13 @@
 import { useCallback, useRef, useState } from "react";
 import { ChevronRightIcon } from "lucide-react";
 import { ToolContentResponse } from "@/components/ai-elements/message";
-import { Button } from "@/components/ui/button";
-import { joinDictation, useDictationTarget } from "@/components/dictation";
+import { AnswerField } from "@/components/answer-controls";
+import { finishDictation, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
-import { PathInput } from "@/components/path-input";
-import { cn } from "@/lib/utils";
+import { ChessBoard } from "@/components/chess-board";
+import { ChessDiagram } from "@/components/chess-diagram";
+import { questionDiagram } from "@/src/core";
+import { parseChessQuestion } from "@/src/core";
 
 /**
  * The practice dock (practice sessions, owner design 2026-10-04): an
@@ -34,7 +36,7 @@ export interface PracticeDockProps {
 	problemCallId: string;
 	/** The pose's arguments — only the statement is the learner's (the
 	 *  mode badge would edge toward announcing the target; dropped). */
-	input: { statement: string };
+	input: { statement: string; chess?: unknown; position?: unknown };
 	/** Collapse state, owned by the DockOverlay. */
 	expanded: boolean;
 	onExpand: () => void;
@@ -51,6 +53,8 @@ export interface PracticeDockProps {
 
 export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmit, onEscape, compactionRunning = false }: PracticeDockProps) {
 	const [thinking, setThinking] = useState("");
+	const [hintOpen, setHintOpen] = useState(false);
+	const chess = parseChessQuestion(input.chess);
 	// Ref MIRRORS the field ("nothing gets lost", the question-dock
 	// discipline): a submit resuming after `await finishDictation()` reads
 	// the tail, never a stale closure.
@@ -65,7 +69,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 			},
 			[],
 		),
-		true,
+		!chess || hintOpen,
 	);
 
 	const submit = () => {
@@ -81,11 +85,10 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 	 * means the field is often never focused — the window-level Enter
 	 * (typing surfaces and buttons excluded) submits the trace. Mounted
 	 * while the dock is — collapsed bar included (the trace survives). */
-	useEnterSubmits(submit);
+	useEnterSubmits(() => { if (!chess || hintOpen) void finishDictation().then(submit); });
 
 	/* ── the collapsed bar ── */
-	if (!expanded) {
-		return (
+	const collapsedBar = !expanded ? (
 			<button
 				type="button"
 				data-testid="practice-dock-bar"
@@ -96,12 +99,16 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				<span className="font-medium">Problem</span>
 				<span className="min-w-0 flex-1 truncate">{input.statement}</span>
 			</button>
-		);
-	}
+		) : null;
+
+	// Chess reasoning remains the dictation target while the board is folded.
+	if (!expanded && !chess) return collapsedBar;
 
 	/* ── the expanded form ── */
 	return (
-		<div data-testid="practice-dock" data-problem={problemCallId}>
+		<>
+		{collapsedBar}
+		<div hidden={!expanded} data-testid="practice-dock" data-problem={problemCallId}>
 			{/* The agent's half: the 'Problem' eyebrow (mirroring the quiz
 			    cards' label row — owner round, 2026-10-05) + the statement,
 			    markdown + LaTeX rendered, capped by the measured column
@@ -111,63 +118,16 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				<div className="lh-prose text-[15px]">
 					<ToolContentResponse>{input.statement}</ToolContentResponse>
 				</div>
+				{questionDiagram(input) && <ChessDiagram position={questionDiagram(input)!} />}
 			</div>
+			{chess && (
+				<div className="max-h-[65vh] overflow-auto p-4"><ChessBoard keyboardSubmit={expanded} question={chess} dictationClaim={!hintOpen} onEscape={onEscape} draftKey={problemCallId} disabled={compactionRunning} onSubmit={(answer) => onSubmit(JSON.stringify({ chessAnswer: answer }))} /></div>
+			)}
 
 			{/* The learner's half: Enter SENDS (owner round 2, 2026-10-05);
 			    Shift+Enter makes a newline — less to decide about. */}
-			<div
-				data-testid="practice-thinking-field"
-				className="m-1.5 rounded-[10px] border border-border/70 bg-background/60 transition-colors focus-within:border-primary/50"
-			>
-				<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-					YOUR THINKING
-				</div>
-				<PathInput
-					value={thinking}
-					onValueChange={(value) => {
-						thinkingRef.current = value;
-						setThinking(value);
-					}}
-					onKeyDown={(e) => {
-						// Esc ends dictation — stopPropagation claims it (the
-						// keyboard machine) so the window chain doesn't also fire.
-						if (e.key === "Escape" && onEscape) {
-							e.preventDefault();
-							e.stopPropagation();
-							onEscape();
-							return;
-						}
-						// Enter SENDS — the single lane (owner round 2, 2026-10-05);
-						// Shift+Enter is the newline, ⌘/Ctrl+Enter the chord too.
-						if (e.key === "Enter" && (!e.shiftKey || e.metaKey || e.ctrlKey)) {
-							e.preventDefault();
-							submit();
-						}
-					}}
-					placeholder="Work here, think out loud."
-					className={cn(
-						"field-sizing-content lh-input max-h-64 min-h-16 w-full resize-none bg-transparent px-2.5 pb-2 outline-none placeholder:text-muted-foreground",
-					)}
-				/>
-				{/* The submit row (owner round 4, 2026-10-05): IDENTICAL to the
-				    question dock's — hint left, the SAME Button (h-9, px-3.5),
-				    one p-1 row. Corner radii concentric: shell 16 − m-1.5 (6) =
-				    field 10 − p-1 (4) = button 6. */}
-				<div className="flex items-center justify-between gap-2 p-1">
-					<span aria-hidden className="pl-1.5 text-xs text-muted-foreground">
-						{compactionRunning ? "compacting session…" : "↵ submits · ⇧↵ newline"}
-					</span>
-					<Button
-						type="button"
-						data-testid="practice-send"
-						disabled={thinking.trim().length === 0 || compactionRunning}
-						onClick={() => submit()}
-						className="ml-auto h-9 rounded-[6px] px-3.5 text-sm font-medium"
-					>
-						Submit thinking
-					</Button>
-				</div>
-			</div>
+			{chess ? <details onToggle={e => setHintOpen(e.currentTarget.open)} className="mt-2"><summary className="cursor-pointer px-4 py-2 text-xs text-muted-foreground">Ask your tutor or request a hint</summary><AnswerField value={thinking} onChange={value => { thinkingRef.current = value; setThinking(value); }} onSubmit={() => void finishDictation().then(submit)} onEscape={onEscape} canSubmit={thinking.trim().length > 0} disabled={compactionRunning} hint={compactionRunning ? "compacting session…" : undefined} testId="practice-thinking-field" submitTestId="practice-send" submitLabel="Submit thinking" placeholder="Work here, think out loud." tall /></details> : <AnswerField value={thinking} onChange={value => { thinkingRef.current = value; setThinking(value); }} onSubmit={() => void finishDictation().then(submit)} onEscape={onEscape} canSubmit={thinking.trim().length > 0} disabled={compactionRunning} hint={compactionRunning ? "compacting session…" : undefined} testId="practice-thinking-field" submitTestId="practice-send" submitLabel="Submit thinking" placeholder="Work here, think out loud." tall />}
 		</div>
+		</>
 	);
 }

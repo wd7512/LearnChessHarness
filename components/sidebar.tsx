@@ -108,6 +108,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 	const [open, setOpen] = useState(false);
 	const [narrow, setNarrow] = useState(false);
 	const [mounted, setMounted] = useState(false);
+	const currentPath = usePathname();
+	useEffect(() => { if (!IS_ELECTRON && window.innerWidth < 768) setOpen(false); }, [currentPath]);
 
 	useEffect(() => {
 		// Electron shell detection (merged chrome, 2026-09-17): keys the
@@ -147,6 +149,13 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 		onResize();
 		window.addEventListener("resize", onResize);
 		return () => window.removeEventListener("resize", onResize);
+	}, []);
+
+	// Mobile browser questions need the full column; manual navigation remains available.
+	useEffect(() => {
+		if (IS_ELECTRON) return;
+		const resize = () => { const stored = localStorage.getItem(STORAGE_KEY); setOpen(window.innerWidth < 768 ? false : stored === null || stored === "1"); };
+		resize(); window.addEventListener("resize", resize); return () => window.removeEventListener("resize", resize);
 	}, []);
 
 	const toggle = useCallback(() => {
@@ -670,11 +679,11 @@ function SessionsSidebar() {
 						// the graph view (keyboard-shortcuts routes it to "/",
 						// the same destination as this logo).
 						label="Home"
-						action="jump-graph"
 						side="right"
 					>
 						<Link
 							href="/"
+							onClick={() => { window.dispatchEvent(new Event("lh:chess-home")); if (window.innerWidth < 768) toggle(); }}
 							aria-label="Home"
 							className="lh-no-drag flex size-9 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50"
 						>
@@ -699,6 +708,7 @@ function SessionsSidebar() {
 				    labels room; teaching keeps the original draft route,
 				    practice carries its mode. */}
 				<div className="mx-3 mb-2 flex flex-col gap-1.5">
+					<Link href="/" onClick={() => { window.dispatchEvent(new Event("lh:chess-home")); if (window.innerWidth < 768) toggle(); }} className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-xs uppercase tracking-wider hover:bg-accent"><span aria-hidden>⌂</span> Home</Link>
 					<button
 						type="button"
 						data-testid="new-session"
@@ -852,6 +862,7 @@ function SessionsSidebar() {
 					    New session — quiet, bottom-pinned, opens the centered
 					    dialog (also mod+, in the keyboard registry). */}
 					<div className="px-3 pb-3 pt-1">
+
 						<Hint label="Settings" action="open-settings" side="right">
 							<button
 								type="button"

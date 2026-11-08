@@ -28,6 +28,8 @@ import type { EmissionStats } from "./graph.ts";
 export type ChatKind = "teach" | "practice";
 
 export interface ChatRecord {
+	/** This fork opens new sessions in the chess learning experience. */
+	subject?: "chess";
 	id: string;
 	title: string;
 	createdAt: string;

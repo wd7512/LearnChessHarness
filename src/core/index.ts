@@ -25,6 +25,10 @@ export * from "./source-label.ts";
 export * from "./render-settings.ts";
 
 export * from "./question-core.ts";
+export * from "./chess.ts";
+export * from "./chess-diagram.ts";
+export * from "./chess-workflows.ts";
+export * from "./chess-curriculum.ts";
 // The event bus (push architecture, 2026-10-02): vocabulary + emit/subscribe
 // for every layer; the browser shell consumes the types + the runtime names
 // through this barrel (shell law: pure core via @/src/core only).
@@ -89,3 +93,7 @@ export * from "./coverage.ts";
 // ONE session→markdown formatter — the extractor's view and the user-facing
 // export share it. Pure, browser-safe.
 export * from "./session-markdown.ts";
+
+export * from "./chess-findings.ts";
+
+export * from "./chess-openings.ts";

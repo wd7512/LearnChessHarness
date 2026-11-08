@@ -1,0 +1,29 @@
+{
+	"version": "19",
+	"tag": "sf_19",
+	"sourceUrl": "https://github.com/official-stockfish/Stockfish/tree/sf_19",
+	"network": "nn-1a298aa575a0.nnue",
+	"assets": {
+		"linux-x64": {
+			"name": "stockfish-linux-x86-64-universal.tar.gz",
+			"executable": "stockfish-linux-x86-64-universal",
+			"sha256": "9defc0d4e55d49c65a6d042f3e571a39fcea499ade6dbe741b53b8c65e03611f"
+		},
+		"darwin-arm64": {
+			"name": "stockfish-macos-universal.tar.gz",
+			"executable": "stockfish-macos-universal",
+			"sha256": "a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77"
+		},
+		"darwin-x64": {
+			"name": "stockfish-macos-universal.tar.gz",
+			"executable": "stockfish-macos-universal",
+			"sha256": "a1f0e3bcc5a6927a11fe6fc8e54a779754645f3c2bae2cf13420fd1957adaa77"
+		},
+		"win32-x64": {
+			"name": "stockfish-windows-x86-64-universal.zip",
+			"executable": "stockfish-windows-x86-64-universal.exe",
+			"sha256": "3c8bf1f9ea66a09350a40df4f632288285ac206d99f33ab5842c408fc30b48a7"
+		}
+	},
+	"networkSha256": "1a298aa575a085434d29027978dc36867fe9c5bcea9376654b7a8eba1e52dfc2"
+}

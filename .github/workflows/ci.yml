@@ -28,6 +28,8 @@ jobs:
           node-version: "26"
           cache: npm
       - run: npm ci
+      - name: Verify the vendored opening catalogue
+        run: node scripts/build-chess-openings.mjs && git diff --exit-code -- src/core/chess-openings-data.json
       - run: npm run typecheck
       - run: npm test
       - run: npm run lint
@@ -66,4 +68,7 @@ jobs:
       # Check the fresh trace before any static copying/curation.
       - run: node scripts/smoke-provider-runtime.mjs
       - run: node scripts/build-server.mjs
+      - run: npm run stockfish:prepare
+      - run: node scripts/smoke-stockfish.mjs
+      - run: node scripts/smoke-chess-desktop.mjs
       - run: node scripts/smoke-server.mjs --electron
