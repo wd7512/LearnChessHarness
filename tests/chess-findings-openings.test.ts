@@ -223,6 +223,15 @@ test("King's Gambit references contain cited, legal branches instead of an empty
 	assert.ok(data.openings.length > 0);
 });
 
+test("opening shorthand requires chess context and leaves language lessons unscoped", () => {
+	assert.equal(openingScopeFromText("Teach me French vocabulary"), undefined);
+	assert.equal(openingScopeFromText("Help with my Hungarian pronunciation"), undefined);
+	assert.equal(openingScopeFromText("Teach me English grammar"), undefined);
+	assert.equal(openingScopeFromText("Teach me the Sicilian opening"), "Sicilian Defense");
+	assert.equal(openingScopeFromText("Review my French rapid games"), "French Defense");
+	assert.equal(openingScopeFromText("Teach me the French Defense"), "French Defense");
+});
+
 test("scoped receipts enumerate all matching games with pagination and measured branch counts before probing", async () => {
 	const games = [
 		game("1. e4 e5 2. f4 exf4 3. Nf3 g5 4. h4 g4 5. Ne5", "Accepted"),

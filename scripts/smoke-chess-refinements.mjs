@@ -20,6 +20,15 @@ page.on("pageerror", (e) => errors.push(e.message));
 const tab = (name) =>
 	page.locator(`nav[aria-label="Chess sections"] button::-p-text(${name})`).click();
 const button = (name) => page.locator(`button::-p-text(${name})`).click();
+const setOpening = async (value) => {
+	await page.click('[aria-label="Opening scope"]', { clickCount: 3 });
+	await page.keyboard.press("Backspace");
+	if (value) await page.type('[aria-label="Opening scope"]', value);
+};
+const expectScope = (games, speed = "all") => page.waitForFunction((games, speed) => {
+	const receipt = document.querySelector('[data-testid="opening-scope-receipt"]');
+	return receipt?.textContent.includes(`${games} matching games`) && receipt.textContent.includes(`· ${speed} ·`);
+}, {}, games, speed);
 const shot = (name) => page.screenshot({ path: path.join(out, name + ".png") });
 const api = (body, route = "/api/chess") =>
 	page.evaluate(
@@ -146,7 +155,22 @@ try {
 	await page.$eval('[data-testid="mistake-feedback"]', (e) => e.scrollIntoView({ block: "start" }));
 	await shot("06-verified-mistake-feedback");
 	await tab("Games");
-	await page.type('[aria-label="Opening scope"]', "King's Gambit");
+	await setOpening("   ");
+	assert.equal(await page.$('[data-testid="opening-scope-receipt"]'), null);
+	await page.waitForSelector('[data-testid="repeated-position-finding"]');
+	await setOpening("Sicilian Defense");
+	await expectScope(0);
+	assert.equal(await page.$('[data-testid="repeated-position-finding"]'), null, "previous all-game recurrence must not appear in an unrelated opening");
+	assert.equal(await page.$eval('[data-testid="chess-review-workflow"]', e => e.textContent.includes("Areas worth investigating")), false);
+	await setOpening("  King's Gambit  ");
+	await expectScope(3);
+	await page.select('[aria-label="Game type"]', "rapid");
+	await expectScope(0, "rapid");
+	assert.equal(await page.$('[data-testid="repeated-position-finding"]'), null);
+	await page.select('[aria-label="Game type"]', "blitz");
+	await expectScope(3, "blitz");
+	await page.select('[aria-label="Game type"]', "all");
+	await expectScope(3);
 	await page.waitForFunction(() =>
 		document
 			.querySelector('[data-testid="opening-scope-receipt"]')
@@ -164,6 +188,7 @@ try {
 		e.scrollIntoView({ block: "start" }),
 	);
 	await shot("07-opening-scope-receipt");
+	const priorAnalyses = state.analyses;
 	await api({
 		action: "reviewStart",
 		opening: "King's Gambit",
@@ -187,13 +212,21 @@ try {
 	assert.equal(surveyed.survey.ready, true);
 	assert.ok(surveyed.survey.actualVerifiedPositions <= 12);
 	state = await api();
-	assert.ok(
-		state.analyses
-			.filter((a) =>
-				state.games.find((g) => g.id === a.gameId).opening.name.startsWith("King's Gambit"),
-			)
-			.every((a) => a.coverage?.mode === "opening-survey" && a.positions.length <= 4),
-	);
+	for (const prior of priorAnalyses.filter(a => a.status === "complete")) {
+		const saved = state.analyses.find(a => a.gameId === prior.gameId);
+		assert.ok(prior.positions.every(p => saved.positions.some(next => next.ply === p.ply)), "survey must retain earlier analyzed positions");
+		if (!prior.coverage) assert.equal(saved.coverage, undefined, "survey must retain full-game coverage");
+	}
+	await page.setViewport({ width: 390, height: 844 });
+	await page.waitForFunction(() => [...document.querySelectorAll("aside")].every(e => e.getBoundingClientRect().width === 0));
+	await tab("Study");
+	await page.click('[aria-label="Open sidebar"]');
+	await page.waitForFunction(() => [...document.querySelectorAll("aside")].some(e => e.getBoundingClientRect().width > 200));
+	await page.click('aside a[aria-label="Home"]');
+	await page.waitForSelector('[data-testid="recommended-next-step"]');
+	await page.waitForFunction(() => [...document.querySelectorAll("aside")].every(e => e.getBoundingClientRect().width === 0));
+	await shot("08-mobile-home-navigation");
+	await page.setViewport({ width: 1365, height: 960 });
 	if (process.env.LH_CHESS_VISUAL_CHAT) {
 		await page.goto(base + "/chat/" + process.env.LH_CHESS_VISUAL_CHAT, {
 			waitUntil: "domcontentloaded",
@@ -239,7 +272,9 @@ try {
 				nativeControls: "dictation + six-stop confidence + reasoning + submission",
 				openingScope: "3 KG games, 3 measured branches, paginated enumeration and source card",
 				survey: "at most four positions per game",
-				prediction: "desktop and mobile question/board/choices visible together",
+				scopeCorrections: "whitespace, unrelated opening, rapid/blitz and all-game reset",
+				mobileNavigation: "sidebar opens; Home resets workspace and closes sidebar",
+				prediction: process.env.LH_CHESS_VISUAL_CHAT ? "desktop and mobile question/board/choices visible together" : "skipped: LH_CHESS_VISUAL_CHAT not set",
 				errors,
 			},
 			null,

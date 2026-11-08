@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { Chess } from "chess.js";
 import { ChessStore } from "../src/store/chess.ts";
 import { ChessService } from "../src/server/chess.ts";
-import { ChessReviewer } from "../src/server/chess-review.ts";
+import { analyzeStoredChessGame, ChessReviewer } from "../src/server/chess-review.ts";
 import {
 	StockfishRuntime,
 	StockfishUnavailable,
@@ -138,6 +138,55 @@ test("a scoped review analyzes a group, reports progress, aggregates evidence an
 		await until(() => !f.service.reviewer.running);
 		assert.equal(f.opened(), opened);
 		assert.equal(f.store.read().review!.reused, 3);
+		assert.equal(f.closed(), f.opened());
+	} finally {
+		f.cleanup();
+	}
+});
+
+test("surveys retain earlier sampled positions and refresh overlapping positions", async () => {
+	const f = fixture();
+	try {
+		await f.service.mutate({ action: "import", pgn, playerId: "learner" });
+		const gameId = f.store.read().games[0]!.id;
+		const first = await analyzeStoredChessGame(f.store, f.engine, gameId, {
+			speed: "all", limit: 1, mode: "opening-survey", positionsPerGame: 1,
+		});
+		assert.deepEqual(first.coverage!.sampledPlies, [1]);
+		const second = await analyzeStoredChessGame(f.store, f.engine, gameId, {
+			speed: "all", limit: 1, opening: "King's Pawn Game", mode: "opening-survey", positionsPerGame: 1,
+		});
+		assert.ok(second.positions.length > first.positions.length, "a different opening entry adds sampled evidence");
+		assert.deepEqual(second.positions.find((p) => p.ply === 1), first.positions[0]);
+		assert.deepEqual(second.coverage!.sampledPlies, second.positions.map((p) => p.ply));
+		f.store.update((s) => { s.analyses[0]!.positions.find((p) => p.ply === 1)!.before.cp = 123456; });
+		const refreshed = await analyzeStoredChessGame(f.store, f.engine, gameId, {
+			speed: "all", limit: 1, mode: "opening-survey", positionsPerGame: 1,
+		});
+		assert.deepEqual(refreshed.positions, second.positions);
+		assert.deepEqual(f.store.read().analyses[0], refreshed);
+		assert.equal(f.closed(), f.opened());
+	} finally {
+		f.cleanup();
+	}
+});
+
+test("reanalyzing a bounded survey preserves full-game coverage and unsampled evidence", async () => {
+	const f = fixture();
+	try {
+		await f.service.mutate({ action: "import", pgn, playerId: "learner" });
+		const gameId = f.store.read().games[0]!.id;
+		const full = await analyzeStoredChessGame(f.store, f.engine, gameId);
+		f.store.update((s) => { s.analyses[0]!.positions[0]!.before.cp = 123456; });
+		await f.service.mutate({
+			action: "reviewStart", speed: "all", limit: 100,
+			mode: "opening-survey", positionsPerGame: 1, reanalyze: true,
+		});
+		await until(() => !f.service.reviewer.running);
+		assert.equal(f.store.read().review!.status, "complete");
+		const saved = f.store.read().analyses.find((a) => a.gameId === gameId)!;
+		assert.equal(saved.coverage, undefined, "a survey must not downgrade full-game analysis");
+		assert.deepEqual(saved.positions, full.positions, "the refreshed ply and retained plies remain available");
 		assert.equal(f.closed(), f.opened());
 	} finally {
 		f.cleanup();

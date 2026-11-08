@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { parseHTML } from "linkedom";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ChessBoard } from "../components/chess-board.tsx";
+import { ChessQuestionDock } from "../components/chess-board.tsx";
+import { PracticeDock } from "../components/practice-dock.tsx";
 import { ChessDiagram } from "../components/chess-diagram.tsx";
 import { ConfidenceControl } from "../components/answer-controls.tsx";
 import { appendToPrimaryInput } from "../components/dictation.tsx";
@@ -42,7 +43,7 @@ test("coordinates are outside square contents and static descriptions start coll
 	assert.equal(document.querySelector("summary")!.textContent, "Position description");
 	assert.equal(document.querySelectorAll("[data-piece]").length, 8);
 });
-test("the board claims native dictation and submit includes the final spoken reasoning", async () => {
+for (const mode of ["question", "practice"] as const) test(`${mode} chess dock retains dictated reasoning while collapsed and submits the final text`, async () => {
 	const dom = parseHTML('<html><body><div id="root"></div></body></html>');
 	const previous = new Map<string, PropertyDescriptor | undefined>();
 	const globals = globalThis as Record<string, unknown>;
@@ -79,17 +80,19 @@ test("the board claims native dictation and submit includes the final spoken rea
 			else delete globals[name];
 		}
 	};
-	await act(async () =>
-		root.render(
-			<ChessBoard
-				question={KING_SAFETY_EXERCISE}
-				draftKey="test"
-				onSubmit={(value) => {
-					answer = value;
-				}}
-			/>,
-		),
+	const renderDock = (expanded: boolean, claim = true) => root.render(
+		mode === "question" ? <ChessQuestionDock input={KING_SAFETY_EXERCISE} toolCallId="test" draftKey="test" expanded={expanded} dictationClaim={claim} onExpand={() => {}} onSubmit={value => { answer = value.chess; }} /> : <PracticeDock problemCallId="test" input={{ statement: "Find the continuation.", chess: KING_SAFETY_EXERCISE }} expanded={expanded} onExpand={() => {}} onSubmit={value => { answer = JSON.parse(value).chessAnswer; }} />,
 	);
+	if (mode === "question") {
+		await act(async () => renderDock(false, false));
+		assert.equal(appendToPrimaryInput("This stays with the reading field."), false, "unrevealed question must not claim reasoning");
+	}
+	await act(async () => renderDock(true));
+	const board = document.querySelector('[data-testid="chess-board"]');
+	await act(async () => renderDock(false));
+	assert.equal(document.querySelector('[data-testid="chess-board"]'), board, "collapsing must retain the board and reasoning target");
+	await act(async () => { assert.equal(appendToPrimaryInput("I checked while reading."), true); });
+	await act(async () => renderDock(true));
 	await act(async () => {
 		const button = [...document.querySelectorAll("button")].find(
 			(b) => b.textContent === "Submit answer",
@@ -99,7 +102,7 @@ test("the board claims native dictation and submit includes the final spoken rea
 			.dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
 		assert.equal(appendToPrimaryInput("The resulting position is safe."), true);
 	});
-	assert.equal(answer!.reasoning, "I checked the threat. The resulting position is safe.");
+	assert.equal(answer!.reasoning, "I checked the threat. I checked while reading. The resulting position is safe.");
 	assert.equal(answer!.confidence, 70);
 	assert.deepEqual(answer!.uciMoves, ["g2g3", "g1f1"]);
 });

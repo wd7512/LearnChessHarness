@@ -21,6 +21,15 @@ export async function analyzeStoredChessGame(
 		store.update((s) => {
 			if (!s.games.some((g) => g.id === gameId))
 				throw new Error("The game was cleared during analysis.");
+			const saved = s.analyses.find((a) => a.gameId === gameId && a.status === "complete");
+			if (sampled && saved) {
+				// A bounded survey refreshes its positions without discarding earlier evidence.
+				const positions = new Map(saved.positions.map((p) => [p.ply, p]));
+				for (const position of analysis.positions) positions.set(position.ply, position);
+				analysis.positions = [...positions.values()].sort((a, b) => a.ply - b.ply);
+				if (!saved.coverage) delete analysis.coverage;
+				else analysis.coverage!.sampledPlies = analysis.positions.map((p) => p.ply);
+			}
 			s.analyses = [...s.analyses.filter((a) => a.gameId !== gameId), analysis];
 		});
 		return analysis;

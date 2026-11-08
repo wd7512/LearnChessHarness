@@ -154,6 +154,10 @@ export function openingScopeFromText(text: string) {
 	const exact = names.find((name) => term.includes(normalized(name)));
 	if (exact) return exact;
 	if (/(?:king'?s? gambit|\bkg\b)/.test(term)) return "King's Gambit";
+	// Language names such as French and Hungarian are also opening shorthand.
+	// Only expand those first-word aliases when the request supplies chess context.
+	if (!/\b(?:chess|openings?|games?|corpus|blitz|rapid|bullet|classical|lichess)\b/.test(term))
+		return undefined;
 	const words = new Set(term.split(/[^a-z]+/));
 	const prefixes = new Map<string, string[]>();
 	for (const name of names) {

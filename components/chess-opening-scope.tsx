@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 export function ChessOpeningScope({
-	opening,
+	opening: requestedOpening,
 	speed,
 	limit,
 	revision,
@@ -17,6 +17,7 @@ export function ChessOpeningScope({
 	onGame: (id: string) => void;
 	onScope?: (data: any) => void;
 }) {
+	const opening = requestedOpening.trim();
 	const [page, setPage] = useState(1);
 	const [data, setData] = useState<any>();
 	const [error, setError] = useState("");

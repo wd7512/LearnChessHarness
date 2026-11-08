@@ -57,11 +57,12 @@ export function ChessReviewWorkflow({
 	onLesson: (card: ChessConceptCard, context?: string) => void;
 	onPractice: (findingId?: string) => void;
 }) {
+	const selectedOpening = opening.trim();
 	const [scopeEvidence, setScopeEvidence] = useState<any>();
-	const currentEvidence = scopeEvidence?.receipt.openingRequested === opening && scopeEvidence?.receipt.timeControl === speed && scopeEvidence?.survey.requestedLimit === limit ? scopeEvidence : undefined;
-	const effectiveMistakes = opening ? currentEvidence?.survey.ready ? currentEvidence.survey.findings : undefined : mistakes;
+	const currentEvidence = scopeEvidence?.receipt.openingRequested === selectedOpening && scopeEvidence?.receipt.timeControl === speed && scopeEvidence?.survey.requestedLimit === limit ? scopeEvidence : undefined;
+	const effectiveMistakes = selectedOpening ? currentEvidence?.survey.ready ? currentEvidence.survey.findings : undefined : mistakes;
 	const job = state.review;
-	const matchingJob = !!job && (job.scope.opening ?? "") === opening && job.scope.speed === speed && job.scope.limit === limit;
+	const matchingJob = !!job && (job.scope.opening ?? "").trim() === selectedOpening && job.scope.speed === speed && job.scope.limit === limit;
 	const running = job?.status === "running";
 	return (
 		<section
@@ -113,7 +114,7 @@ export function ChessReviewWorkflow({
 				<Button
 					disabled={!available || busy || !!running || !state.games.length}
 					onClick={() =>
-						void mutate({ action: "reviewStart", speed, limit, opening: opening || undefined, mode: opening ? "opening-survey" : undefined, positionsPerGame: opening ? 4 : undefined }, "Starting game review…")
+						void mutate({ action: "reviewStart", speed, limit, opening: selectedOpening || undefined, mode: selectedOpening ? "opening-survey" : undefined, positionsPerGame: selectedOpening ? 4 : undefined }, "Starting game review…")
 					}
 				>
 					Review my games
@@ -129,7 +130,7 @@ export function ChessReviewWorkflow({
 					</Button>
 				)}
 			</div>
-			{opening && <ChessOpeningScope opening={opening} speed={speed} limit={limit} revision={job?.completed ?? 0} onGame={onGame} onScope={setScopeEvidence} />}
+			{selectedOpening && <ChessOpeningScope opening={selectedOpening} speed={speed} limit={limit} revision={job?.completed ?? 0} onGame={onGame} onScope={setScopeEvidence} />}
 			{job && (matchingJob || running) && (
 				<div role="status" aria-live="polite" className="space-y-3 rounded-lg border p-4 text-xs">
 					<p>
@@ -154,7 +155,7 @@ export function ChessReviewWorkflow({
 					))}
 				</div>
 			)}
-			{effectiveMistakes && (opening || (matchingJob && job && job.completed > 0)) && <ChessFindings findings={effectiveMistakes} available={available} busy={busy || !!running} onPractice={onPractice} onGame={onGame} onLesson={(id, context) => onLesson(CHESS_CONCEPTS.find(c => c.concept_id === id) ?? CHESS_CONCEPTS.find(c => c.concept_id === "calculation")!, context)} />}
+			{effectiveMistakes && (selectedOpening || (matchingJob && job && job.completed > 0)) && <ChessFindings findings={effectiveMistakes} available={available} busy={busy || !!running} onPractice={onPractice} onGame={onGame} onLesson={(id, context) => onLesson(CHESS_CONCEPTS.find(c => c.concept_id === id) ?? CHESS_CONCEPTS.find(c => c.concept_id === "calculation")!, context)} />}
 			{matchingJob && job && job.completed > 0 && (
 				<div className="space-y-5">
 					<h4 className="text-sm font-medium">Areas worth investigating</h4>

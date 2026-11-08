@@ -88,8 +88,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 	useEnterSubmits(() => { if (!chess || hintOpen) void finishDictation().then(submit); });
 
 	/* ── the collapsed bar ── */
-	if (!expanded) {
-		return (
+	const collapsedBar = !expanded ? (
 			<button
 				type="button"
 				data-testid="practice-dock-bar"
@@ -100,12 +99,16 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				<span className="font-medium">Problem</span>
 				<span className="min-w-0 flex-1 truncate">{input.statement}</span>
 			</button>
-		);
-	}
+		) : null;
+
+	// Chess reasoning remains the dictation target while the board is folded.
+	if (!expanded && !chess) return collapsedBar;
 
 	/* ── the expanded form ── */
 	return (
-		<div data-testid="practice-dock" data-problem={problemCallId}>
+		<>
+		{collapsedBar}
+		<div hidden={!expanded} data-testid="practice-dock" data-problem={problemCallId}>
 			{/* The agent's half: the 'Problem' eyebrow (mirroring the quiz
 			    cards' label row — owner round, 2026-10-05) + the statement,
 			    markdown + LaTeX rendered, capped by the measured column
@@ -118,12 +121,13 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				{questionDiagram(input) && <ChessDiagram position={questionDiagram(input)!} />}
 			</div>
 			{chess && (
-				<div className="max-h-[65vh] overflow-auto p-4"><ChessBoard question={chess} dictationClaim={!hintOpen} onEscape={onEscape} draftKey={problemCallId} disabled={compactionRunning} onSubmit={(answer) => onSubmit(JSON.stringify({ chessAnswer: answer }))} /></div>
+				<div className="max-h-[65vh] overflow-auto p-4"><ChessBoard keyboardSubmit={expanded} question={chess} dictationClaim={!hintOpen} onEscape={onEscape} draftKey={problemCallId} disabled={compactionRunning} onSubmit={(answer) => onSubmit(JSON.stringify({ chessAnswer: answer }))} /></div>
 			)}
 
 			{/* The learner's half: Enter SENDS (owner round 2, 2026-10-05);
 			    Shift+Enter makes a newline — less to decide about. */}
 			{chess ? <details onToggle={e => setHintOpen(e.currentTarget.open)} className="mt-2"><summary className="cursor-pointer px-4 py-2 text-xs text-muted-foreground">Ask your tutor or request a hint</summary><AnswerField value={thinking} onChange={value => { thinkingRef.current = value; setThinking(value); }} onSubmit={() => void finishDictation().then(submit)} onEscape={onEscape} canSubmit={thinking.trim().length > 0} disabled={compactionRunning} hint={compactionRunning ? "compacting session…" : undefined} testId="practice-thinking-field" submitTestId="practice-send" submitLabel="Submit thinking" placeholder="Work here, think out loud." tall /></details> : <AnswerField value={thinking} onChange={value => { thinkingRef.current = value; setThinking(value); }} onSubmit={() => void finishDictation().then(submit)} onEscape={onEscape} canSubmit={thinking.trim().length > 0} disabled={compactionRunning} hint={compactionRunning ? "compacting session…" : undefined} testId="practice-thinking-field" submitTestId="practice-send" submitLabel="Submit thinking" placeholder="Work here, think out loud." tall />}
 		</div>
+		</>
 	);
 }

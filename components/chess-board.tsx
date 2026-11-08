@@ -43,6 +43,7 @@ type ChessBoardProps = {
 	assessment?: "lesson" | "engine";
 	voice?: boolean;
 	dictationClaim?: boolean;
+	keyboardSubmit?: boolean;
 	onEscape?: () => void;
 };
 export function ChessBoard({ voice, ...props }: ChessBoardProps) {
@@ -66,6 +67,7 @@ function ChessBoardInput({
 	disabled = false,
 	assessment = "lesson",
 	dictationClaim = true,
+	keyboardSubmit = true,
 	onEscape,
 	dictationSlot,
 }: ChessBoardProps & { dictationSlot?: React.ReactNode }) {
@@ -179,7 +181,7 @@ function ChessBoardInput({
 			.finally(() => setSubmitting(false));
 	}
 	useEnterSubmits(() => {
-		if (dictationClaim) submitAnswer();
+		if (dictationClaim && keyboardSubmit) submitAnswer();
 	});
 
 	return (
@@ -321,6 +323,7 @@ export function ChessQuestionDock({
 	onSubmit,
 	disabled,
 	onEscape,
+	dictationClaim = true,
 }: {
 	input: unknown;
 	toolCallId: string;
@@ -330,20 +333,19 @@ export function ChessQuestionDock({
 	onSubmit: (answer: QuestionAnswerData) => void;
 	disabled?: boolean;
 	onEscape?: () => void;
+	dictationClaim?: boolean;
 }) {
 	const q = parseChessQuestion(input);
 	if (!q) return <p role="alert">This chess question is invalid. Request another position.</p>;
-	if (!expanded)
-		return (
-			<button type="button" onClick={onExpand} className="w-full p-4 text-left text-sm">
-				Chessboard · {q.objective}
-			</button>
-		);
 	return (
-		<div data-dock-scroll-area="" className="max-h-[var(--dock-max-h,75vh)] overflow-y-auto p-4">
+		<>
+			{!expanded && <button type="button" onClick={onExpand} className="w-full p-4 text-left text-sm">Chessboard · {q.objective}</button>}
+		<div hidden={!expanded} data-dock-scroll-area="" className="max-h-[var(--dock-max-h,75vh)] overflow-y-auto p-4">
 			<p className="mb-4 text-sm font-medium">{q.objective}</p>
 			<ChessBoard
 				key={toolCallId}
+				dictationClaim={dictationClaim}
+				keyboardSubmit={expanded}
 				question={q}
 				draftKey={draftKey ?? toolCallId}
 				disabled={disabled}
@@ -363,6 +365,7 @@ export function ChessQuestionDock({
 				}
 			/>
 		</div>
+		</>
 	);
 }
 
