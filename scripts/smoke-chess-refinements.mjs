@@ -21,9 +21,7 @@ const tab = (name) =>
 	page.locator(`nav[aria-label="Chess sections"] button::-p-text(${name})`).click();
 const button = (name) => page.locator(`button::-p-text(${name})`).click();
 const setOpening = async (value) => {
-	await page.click('[aria-label="Opening scope"]', { clickCount: 3 });
-	await page.keyboard.press("Backspace");
-	if (value) await page.type('[aria-label="Opening scope"]', value);
+	await page.locator('[aria-label="Opening scope"]').fill(value);
 };
 const expectScope = (games, speed = "all") => page.waitForFunction((games, speed) => {
 	const receipt = document.querySelector('[data-testid="opening-scope-receipt"]');
